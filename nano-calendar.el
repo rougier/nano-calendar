@@ -194,7 +194,14 @@
     (grey        . ("#FAFAFA" "#F5F5F5" "#EEEEEE" "#E0E0E0" "#BDBDBD"
                     "#9E9E9E" "#757575" "#616161" "#424242" "#212121"))
     (blue-grey   . ("#ECEFF1" "#CFD8DC" "#B0BEC5" "#90A4AE" "#78909C"
-                    "#607D8B" "#546E7A" "#455A64" "#37474F" "#263238"))))
+                    "#607D8B" "#546E7A" "#455A64" "#37474F" "#263238"))
+    (viridis     . ("#fde725" "#b5de2b" "#6ece58" "#35b779" "#1f9e89"
+                    "#26828e" "#31688e" "#3e4989" "#482878" "#440154"))
+    (magma       . ("#fcfdbf" "#feca8d" "#fd9668" "#f1605d" "#cd4071"
+                    "#9e2f7f" "#721f81" "#440f76" "#180f3d" "#000004"))
+    (inferno     . ("#fcffa4" "#f7d13d" "#fb9b06" "#ed6925" "#cf4446"
+                    "#a52c60" "#781c6d" "#4a0c6b" "#1b0c41" "#000004"))))
+
 
 (defun nano-calendar--color-luminance (color)
   "Calculate the relative luminance of a color string (e.g. \"#ffaa00\", \"blue\").
@@ -222,7 +229,8 @@ Return a value between 0 and 1."
                  (const indigo) (const blue)  (const light-blue)  (const cyan)
                  (const teal)   (const green) (const light-green) (const lime)
                  (const yellow) (const amber) (const orange)      (const deep-orange)
-                 (const brown)  (const grey)  (const blue-grey))
+                 (const brown)  (const grey)  (const blue-grey)
+                 (const viridis) (const magma) (const inferno))
   :group 'nano-calendar-faces)
 
 (defcustom nano-calendar-filter-entry-predicate #'nano-calendar-filter-entry
@@ -652,12 +660,12 @@ for efficiency."
                             'date date
                             'current is-current
                             'face (cond
+                                   (is-marked
+                                    'nano-calendar-marked-face)
                                    ((> level 0)
                                     `(:foreground ,foreground
                                       :background ,background
                                       :inherit ,(when is-today 'nano-calendar-today-face)))
-                                   (is-marked
-                                    'nano-calendar-marked-face)
                                    (is-today
                                     'nano-calendar-today-face)
                                    (is-holidays
