@@ -722,11 +722,12 @@ for efficiency."
   (nano-calendar-update)
   (nano-calendar-goto nano-calendar--current))
   
-(defun nano-calendar-update (&optional layout)
+(defun nano-calendar-update (&optional layout skip)
   "Insert calendar at point for MONTH YEAR"
 
   (interactive)
-  (let* ((curr nano-calendar--current)
+  (let* ((skip (or skip 1))
+         (curr nano-calendar--current)
          (prev (nano-calendar-backward-month nano-calendar--current))
          (first (nano-calendar-first-month nano-calendar--current))
          (layout (or layout nano-calendar-layout))
@@ -741,7 +742,7 @@ for efficiency."
          (inhibit-read-only t))
     (erase-buffer)
     (goto-char (point-min))
-    (insert "\n")
+    (insert (make-string skip ?\n))
     (dolist (row (number-sequence 1 (car layout)))
       (dolist (col (number-sequence 1 (cdr layout)))
         (let* ((month (nano-calendar--date-month date))
@@ -891,10 +892,12 @@ for efficiency."
   (setq nano-calendar--saved nano-calendar--current)
   
   (unwind-protect
-      (let ((vertico-count 13))
+      (let ((nano-calendar-navigation-mode 'chronological)
+            (vertico-count 13))
         (read-from-minibuffer ""))
     (remove-hook 'minibuffer-setup-hook #'nano-calendar--minibuffer-setup)
     (remove-hook 'nano-calendar-date-changed-hook #'nano-calendar--minibuffer-date-changed))
+  
   nano-calendar--current)
 
 (defun nano-calendar-current ()
