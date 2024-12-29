@@ -106,7 +106,7 @@
 
 (defcustom nano-calendar-navigation-mode 'spatial
   "Navigation system when arrows are pressed. Spatial means to move to the prev/next date on the same line while chronological means to move to the prev/next date on the same month."
-  
+
   :group 'nano-calendar
   :type '(choice (const :tag "Spatial" spatial)
                  (const :tag "Chronological" chronological)))
@@ -215,7 +215,7 @@ Return a value between 0 and 1."
 (defcustom nano-calendar-palette 'yellow
   (concat
    "Background colors to use to highlight a day in calendar view according to busy level.\n\n"
-   (mapconcat (lambda (palette) 
+   (mapconcat (lambda (palette)
                 (let* ((name (symbol-name (car palette)))
                        (colors (cdr palette))
                        (colors (mapconcat
@@ -224,7 +224,7 @@ Return a value between 0 and 1."
                                 colors "")))
                   (concat (format "%-12s" name) " : " colors "\n")))
            nano-calendar-palettes ""))
-  
+
   :type `(choice (const red)    (const pink)  (const purple)      (const deep-purple)
                  (const indigo) (const blue)  (const light-blue)  (const cyan)
                  (const teal)   (const green) (const light-green) (const lime)
@@ -263,7 +263,7 @@ years to DATE (default to nano-calendar--current"
          (day (nano-calendar--date-day date))
          (month (nano-calendar--date-month date))
          (year (nano-calendar--date-year date)))
-    (encode-time 0 
+    (encode-time 0
                  (+ minute minutes)
                  (+ hour hours)
                  (+ day days)
@@ -291,7 +291,7 @@ month year), (month year) or (year)"
 
 (defun nano-calendar--date-equal (date-1 date-2)
   "Return t if DATE-1 is equal to DATE-2 (irrespective of time)"
-  
+
   (and date-1 date-2
        (eq (nano-calendar--date-day date-1)
            (nano-calendar--date-day date-2))
@@ -407,12 +407,12 @@ month year), (month year) or (year)"
          (month (if (< month 1) 12 month))
          (day (min day (date-days-in-month year month))))
     (encode-time 0 minute hour day month year)))
-  
+
 (defun nano-calendar-forward-year (&optional date)
   "Move current date 1 year forward"
   (interactive)
   (nano-calendar--date-inc (or date nano-calendar--current) 0 0 0 0 +1))
-    
+
 (defun nano-calendar-backward-year (&optional date)
   "Move current date 1 year backward"
   (interactive)
@@ -435,39 +435,39 @@ month year), (month year) or (year)"
                    (eq (nano-calendar--date-year nano-calendar--current)
                        (nano-calendar--date-year date)))
         (nano-calendar-update)))
-    
+
     (goto-char (point-min))
     (when-let* ((match (text-property-search-forward
                         'date date #'nano-calendar--date-equal))
                 (beg (prop-match-beginning match))
                 (end (prop-match-end match)))
-      (move-overlay overlay beg end) 
+      (move-overlay overlay beg end)
       (add-text-properties beg end '(current t))
       (setq nano-calendar--current date)
       (run-hooks 'nano-calendar-date-changed-hook))
     (goto-char (point-min))))
-    
+
 (defun nano-calendar-goto-today ()
   "Move current date to today"
-  
+
   (interactive)
   (nano-calendar-goto (nano-calendar-today)))
 
 (defun nano-calendar-goto-prev-day ()
   "Go to previous day"
-  
+
   (interactive)
   (nano-calendar-goto (nano-calendar-backward-day)))
 
 (defun nano-calendar-goto-next-day ()
   "Go to next day"
-  
+
   (interactive)
   (nano-calendar-goto (nano-calendar-forward-day)))
 
 (defun nano-calendar-goto-down ()
   "Go to date below (irrespective of month)"
-  
+
   (interactive)
   (goto-char (point-min))
   (text-property-search-forward 'current t)
@@ -483,7 +483,7 @@ month year), (month year) or (year)"
 
 (defun nano-calendar-goto-up ()
   "Go to date above (irrespective of month)"
-  
+
   (interactive)
   (goto-char (point-min))
   (text-property-search-forward 'current t)
@@ -499,7 +499,7 @@ month year), (month year) or (year)"
 
 (defun nano-calendar-goto-next ()
   "Go to next date on the line (irrespective of month)"
-  
+
   (interactive)
   (goto-char (point-min))
   (text-property-search-forward 'current t)
@@ -511,7 +511,7 @@ month year), (month year) or (year)"
 
 (defun nano-calendar-goto-prev ()
   "Go to prev date on the line  (irrespective of month)"
-  
+
   (interactive)
   (goto-char (point-min))
   (text-property-search-forward 'current t)
@@ -523,37 +523,37 @@ month year), (month year) or (year)"
 
 (defun nano-calendar-goto-prev-week ()
   "Go to previous week"
-  
+
   (interactive)
   (nano-calendar-goto (nano-calendar-backward-week)))
 
 (defun nano-calendar-goto-next-week ()
   "Go to next week"
-  
+
   (interactive)
   (nano-calendar-goto (nano-calendar-forward-week)))
 
 (defun nano-calendar-goto-prev-month ()
   "Go to previous month"
-  
+
   (interactive)
   (nano-calendar-goto (nano-calendar-backward-month)))
 
 (defun nano-calendar-goto-next-month ()
   "Go to next month"
-  
+
   (interactive)
   (nano-calendar-goto (nano-calendar-forward-month)))
 
 (defun nano-calendar-goto-prev-year ()
   "Go to previous year"
-  
+
   (interactive)
   (nano-calendar-goto (nano-calendar-backward-year)))
 
 (defun nano-calendar-goto-next-year ()
   "Go to next year"
-  
+
   (interactive)
   (nano-calendar-goto (nano-calendar-forward-year)))
 
@@ -572,7 +572,7 @@ month year), (month year) or (year)"
 
 (defun nano-calendar-unmark-all ()
   "Unmake all marked dates"
-  
+
   (interactive)
   (setq nano-calendar--marked nil)
   (setq nano-calendar--cached-month nil)
@@ -585,7 +585,7 @@ month year), (month year) or (year)"
   "Compute the busy level at a given date. This is done by
 counting the number of timed entries. Computed levels are cached
 for efficiency."
-    
+
   (let* ((day   (nano-calendar--date-day date))
          (month (nano-calendar--date-month date))
          (year  (nano-calendar--date-year date))
@@ -601,7 +601,7 @@ for efficiency."
             (when (string-equal (get-text-property 0 'type entry) "deadline")
               (setq deadline t))
             (when (funcall nano-calendar-filter-entry-predicate entry date)
-                (setq level (+ level 1)))))
+              (setq level (+ level 1)))))
         (add-to-list 'nano-calendar--busy-levels `(,date ,level ,deadline))
         level))))
 
@@ -611,7 +611,7 @@ for efficiency."
 
 (defun nano-calendar-generate-month (month year &optional force)
   "Return the (possibily cached) representaton of MONTH YEAR."
-   
+
   (let* ((month (or month (nano-calendar--date-month
                            nano-calendar--current)))
          (year (or year (nano-calendar--date-year
@@ -646,7 +646,7 @@ for efficiency."
                (background (nth (- level 1) backgrounds))
                (foreground (if (< (nano-calendar--color-luminance background) 0.5)
                                "white" "black"))
-               
+
                (is-marked (cl-member date nano-calendar--marked
                                      :test #'nano-calendar--date-equal))
                (is-current (nano-calendar--date-equal date nano-calendar--current)))
