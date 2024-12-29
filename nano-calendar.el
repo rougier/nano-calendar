@@ -721,8 +721,64 @@ for efficiency."
   (message "Done")
   (nano-calendar-update)
   (nano-calendar-goto nano-calendar--current))
-  
-(defun nano-calendar-update (&optional layout skip)
+
+
+(defun nano-calendar-insert (&optional layout)
+  "Insert a calender at point with given LAYOUT"
+
+  (let* ((curr nano-calendar--current)
+         (prev (nano-calendar-backward-month nano-calendar--current))
+         (first (nano-calendar-first-month nano-calendar--current))
+         (layout (or layout nano-calendar-layout))
+         (date (cond ((equal layout '(1 . 1)) curr)
+                     ((equal layout '(1 . 2)) curr)
+                     ((equal layout '(1 . 3)) prev)
+                     ((equal layout '(3 . 1)) prev)
+                     ((equal layout '(2 . 6)) first)
+                     ((equal layout '(6 . 2)) first)
+                     ((equal layout '(3 . 4)) first)
+                     ((equal layout '(4 . 3)) first)))
+         (inhibit-read-only t))
+    (dolist (row (number-sequence 1 (car layout)))
+      (dolist (col (number-sequence 1 (cdr layout)))
+        (let* ((month (nano-calendar--date-month date))
+               (year (nano-calendar--date-year date))
+               (lines (string-split (nano-calendar-generate-month month year) "\n")))
+          (save-excursion
+            (dolist (line lines)
+              (cond ((eq col 1)
+                     (insert (concat
+                              nano-calendar-prefix
+                              line
+                              nano-calendar-column-separation
+                              "\n")))
+                    ((eq col (cdr layout))
+                     (end-of-line)
+                     (insert line)
+                     (forward-line))
+                    (t
+                     (end-of-line)
+                     (insert (concat line nano-calendar-column-separation))
+                     (forward-line))))))
+        (setq date (nano-calendar-forward-month date)))
+      (goto-char (point-max))
+      (insert nano-calendar-row-separation)))
+
+  (let ((date nano-calendar--current)
+        (overlay (or nano-calendar--current-overlay
+                     (make-overlay (point-min) (point-min)))))
+    (setq nano-calendar--current-overlay overlay)
+    (overlay-put overlay 'face 'nano-calendar-current-face)
+    (overlay-put overlay 'evaporate t)
+    (save-excursion
+      (goto-char (point-min))
+      (when-let* ((match (text-property-search-forward
+                          'date date #'nano-calendar--date-equal))
+                  (beg (prop-match-beginning match))
+                  (end (prop-match-end match)))
+        (move-overlay overlay beg end)))))
+
+(defun nano-calendar-update (&optional layout skip do-not-erase)
   "Insert calendar at point for MONTH YEAR"
 
   (interactive)
