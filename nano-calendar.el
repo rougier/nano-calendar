@@ -772,7 +772,7 @@ for efficiency."
 
 (defun nano-calendar-select-and-quit ()
   "Select date and quit calendar"
-  
+
   (interactive)
   (if-let* ((window (active-minibuffer-window))
             (buffer (window-buffer window)))
@@ -781,7 +781,7 @@ for efficiency."
 
 (defun nano-calendar-cancel-and-quit ()
   "Cancel selecton and quit calendar"
-  
+
   (interactive)
   (setq nano-calendar--current nano-calendar--saved)
 
@@ -822,20 +822,20 @@ for efficiency."
 
 (defun nano-calendar (&optional date layout buffer)
   "Display a calendar centered on DATE using specified LAYOUT and BUFFER."
-  
+
   (interactive)
   (let ((buffer (or buffer (get-buffer-create "*nano-calendar*")))
         (layout (or layout nano-calendar-default-layout)))
     (switch-to-buffer buffer)
     (setq-local nano-calendar-layout layout))
-  
+
   (setq nano-calendar--marked '())
   (setq nano-calendar--cached-month nil)
-  
+
   (unless nano-calendar--current
     (setq nano-calendar--current (nano-calendar-today)))
   (setq nano-calendar--saved nano-calendar--current)
-  
+
   (let ((overlay (make-overlay (point-min) (point-min))))
     (setq nano-calendar--current-overlay overlay)
     (overlay-put overlay'face 'nano-calendar-current-face))
@@ -855,8 +855,8 @@ for efficiency."
       (progn
           (define-key keymap (kbd "<left>")  #'nano-calendar-goto-prev-day)
           (define-key keymap (kbd "<right>")  #'nano-calendar-goto-next-day))))
-  
-  (setq header-line-format nil)
+
+;;  (setq header-line-format nil)
   (let ((inhibit-message t))
     (stripes-mode 0)
     (hl-line-mode 0)))
@@ -882,22 +882,21 @@ for efficiency."
                         (propertize date 'face 'default)
                         (propertize " " 'display '(raise -0.5))))
       (goto-char (point-min))))))
-  
+
 (defun nano-calendar-prompt ()
   "Prompt for a date based on calendar selection"
-  
+
   (interactive)
   (add-hook 'minibuffer-setup-hook #'nano-calendar--minibuffer-setup)
   (add-hook 'nano-calendar-date-changed-hook #'nano-calendar--minibuffer-date-changed)
   (setq nano-calendar--saved nano-calendar--current)
-  
+
   (unwind-protect
       (let ((nano-calendar-navigation-mode 'chronological)
             (vertico-count 13))
         (read-from-minibuffer ""))
     (remove-hook 'minibuffer-setup-hook #'nano-calendar--minibuffer-setup)
     (remove-hook 'nano-calendar-date-changed-hook #'nano-calendar--minibuffer-date-changed))
-  
   nano-calendar--current)
 
 (defun nano-calendar-current ()
