@@ -740,9 +740,10 @@ for efficiency."
                      ((equal layout '(3 . 4)) first)
                      ((equal layout '(4 . 3)) first)))
          (inhibit-read-only t))
-    (erase-buffer)
-    (goto-char (point-min))
-    (insert (make-string skip ?\n))
+    (unless do-not-erase
+      (erase-buffer)
+      (goto-char (point-min))
+      (insert (make-string skip ?\n)))
     (dolist (row (number-sequence 1 (car layout)))
       (dolist (col (number-sequence 1 (cdr layout)))
         (let* ((month (nano-calendar--date-month date))
