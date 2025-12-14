@@ -809,7 +809,6 @@ at point."
     (hl-line-mode 1)
     (setq buffer-read-only t)))
 
-
 (defun nano-calendar-update (&optional date)
   "Update calendar and workload"
   
@@ -821,15 +820,15 @@ at point."
                      (t (nano-calendar-today))))
          (layout (or nano-calendar-layout)))
     (with-current-buffer buffer
-      (let ((inhibit-read-only t))
-        (erase-buffer)
-        (insert (concat "\n" (nano-calendar--generate date layout) "\n")))
-      ;; Update all workloads (when visible)
       (when (or nano-calendar-workload-color
                 nano-calendar-workload-detail
                 nano-calendar-workload-compact
                 nano-calendar-workload-symbol)
         (nano-calendar--workload-update-all))
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert (concat "\n" (nano-calendar--generate date layout) "\n")))
+      ;; Update all workloads (when visible)
       (nano-calendar-goto-date date))))
   
 ;;;###autoload
