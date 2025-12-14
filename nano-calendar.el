@@ -76,6 +76,11 @@
                  (const :tag "2x6" (2 . 6))
                  (const :tag "6x2" (6 . 2))))
 
+(defcustom nano-calendar-org-agenda-keys "n"
+  "Org-agenda key to use when showing org-agenda."
+  :type 'string
+  :group 'nano-calendar)
+          
 (defcustom nano-calendar-prefix "  "
   "String for prefixing lines"
   :type 'string
@@ -784,7 +789,7 @@ at point."
               (date (format "%04d-%02d-%02d" year month day)))
     (nano-calendar-quit)
     (let ((org-agenda-start-day date))
-      (org-agenda nil "n"))))
+      (org-agenda nil nano-calendar-org-agenda-keys))))
 
 (define-minor-mode nano-calendar-mode
   "Nano calendar mode"
@@ -835,16 +840,20 @@ at point."
 (defun nano-calendar (&optional date)
   "Display a Gregorian calendar showing DATE and enforcing LAYOUT."
   (interactive)
-  (with-current-buffer (pop-to-buffer
-                        (get-buffer-create nano-calendar-buffer))
-    (let* ((date (if (not nano-calendar-mode)
-                     (nano-calendar-today)
-                   (nano-calendar-closest-date))))
-      (nano-calendar-mode 1)
-      (nano-calendar-update date))
-      (fit-window-to-buffer nil nil (window-height))
-      (recenter -1)
-      (run-hooks 'nano-calendar-hook)))
+
+  (if (buffer-live-p (get-buffer nano-calendar-buffer))
+      (pop-to-buffer
+       (get-buffer-create nano-calendar-buffer))
+    (with-current-buffer (pop-to-buffer
+                          (get-buffer-create nano-calendar-buffer))
+      (let* ((date (if (not nano-calendar-mode)
+                       (nano-calendar-today)
+                     (nano-calendar-closest-date))))
+        (nano-calendar-mode 1)
+        (nano-calendar-update date)
+        (fit-window-to-buffer nil nil (window-height))
+        (recenter -1)
+        (run-hooks 'nano-calendar-hook)))))
 
 (provide 'nano-calendar)
 ;;; nano-calendar.el ends here
