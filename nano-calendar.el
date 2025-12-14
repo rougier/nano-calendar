@@ -358,11 +358,11 @@ Slot values come from `nano-calendar--workload-slots`:
                     (t overlap))
                    collect (concat left right)))
          (line1 (concat
-                 (propertize (format "%26s  " date-str) 'face 'bold)
+                 (propertize (format "%28s  " date-str) 'face 'bold)
                  (propertize (mapconcat #'identity hours " ")
                              'face 'font-lock-comment-face)))
          (line2 (concat
-                 (propertize (format "%28s" "Free / Busy  ")
+                 (propertize (format "%30s" "Free / Busy  ")
                              'face 'font-lock-comment-face)
                  (mapconcat #'identity blocks " ")))
          (space (make-string (- (window-width)
@@ -845,3 +845,6 @@ at point."
       (fit-window-to-buffer nil nil (window-height))
       (recenter -1)
       (run-hooks 'nano-calendar-hook)))
+
+(provide 'nano-calendar)
+;;; nano-calendar.el ends here
