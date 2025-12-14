@@ -377,7 +377,7 @@ Slot values come from `nano-calendar--workload-slots`:
   "Update all workloads"
   (interactive)
   (nano-calendar--workload-update-all)
-  (nano-calendar))
+  (nano-calendar-update))
 
 (defun nano-calendar-workload-face (workload face)
   "Return the corresponding face for WORKLOAD given current FACE."
@@ -625,13 +625,12 @@ and REDISPLAY is t, the calendar is re-generated such as to make the date
            t))
   
         (redisplay
-         (nano-calendar date)
+         (nano-calendar-update date)
          (when nano-calendar-workload-compact
            (nano-calendar-show-workload-compact))
          (when nano-calendar-workload-detail
            (nano-calendar-show-org-agenda-entries))
-         t)
-  
+         t)  
         (t
          nil)))
 
@@ -670,8 +669,9 @@ non-navigation moves."
                 (get-text-property (point) 'date)))
         (next (save-excursion
                 (text-property-search-forward 'date)
-                (backward-char)
-                (get-text-property (point) 'date))))
+                (when (> (point) (point-min))
+                  (forward-char -1)
+                  (get-text-property (point) 'date)))))
     (or curr prev next)))
 
 (defun nano-calendar--hl-line-range ()
@@ -745,16 +745,16 @@ at point."
     (pcase key
       (?b (setq nano-calendar-workload-color
                 (not nano-calendar-workload-color))
-          (nano-calendar))
+          (nano-calendar-update))
       (?s (setq nano-calendar-workload-symbol
                 (not nano-calendar-workload-symbol))
-          (nano-calendar))
+          (nano-calendar-update))
       (?c (setq nano-calendar-workload-compact
                 (not nano-calendar-workload-compact))
-          (nano-calendar))
+          (nano-calendar-update))
       (?d (setq nano-calendar-workload-detail
                 (not nano-calendar-workload-detail))
-          (nano-calendar))
+          (nano-calendar-update))
       (_ ))))
 
 (defun nano-calendar-show-org-agenda-entries ()
@@ -809,31 +809,40 @@ at point."
     (hl-line-mode 1)
     (setq buffer-read-only t)))
 
-(defun nano-calendar (&optional date layout)
-  "Display a Gregorian calendar showing DATE and enforcing LAYOUT."
-  (interactive)
+
+(defun nano-calendar-update (&optional date)
+  "Update calendar and workload"
+  
   (let* ((buffer (get-buffer nano-calendar-buffer))
          (date (cond (date date)
                      ((buffer-live-p buffer)
                       (with-current-buffer buffer
                         (nano-calendar-closest-date)))
                      (t (nano-calendar-today))))
-         (layout (or layout nano-calendar-layout)))
-    (let ((buffer (get-buffer-create nano-calendar-buffer)))
-      (unless (get-buffer-window buffer)
-        (pop-to-buffer buffer))
-      (with-current-buffer buffer
-        (let ((inhibit-read-only t))
-          (erase-buffer)
-          (insert (concat "\n" (nano-calendar--generate date layout) "\n")))
-        (fit-window-to-buffer nil nil (window-height))
-
-        ;; Enter calendar mode if not already in calendar mode
-        (unless nano-calendar-mode
-          (nano-calendar-mode 1)
-          ;; Upate all workloads (when visible)
-          (when (or nano-calendar-workload-color
-                    nano-calendar-workload-symbol)
-            (nano-calendar--workload-update-all))
-          (run-hooks 'nano-calendar-hook))        
-        (nano-calendar-goto-date date)))))
+         (layout (or nano-calendar-layout)))
+    (with-current-buffer buffer
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert (concat "\n" (nano-calendar--generate date layout) "\n")))
+      ;; Update all workloads (when visible)
+      (when (or nano-calendar-workload-color
+                nano-calendar-workload-detail
+                nano-calendar-workload-compact
+                nano-calendar-workload-symbol)
+        (nano-calendar--workload-update-all))
+      (nano-calendar-goto-date date))))
+  
+;;;###autoload
+(defun nano-calendar (&optional date)
+  "Display a Gregorian calendar showing DATE and enforcing LAYOUT."
+  (interactive)
+  (with-current-buffer (pop-to-buffer
+                        (get-buffer-create nano-calendar-buffer))
+    (let* ((date (if (not nano-calendar-mode)
+                     (nano-calendar-today)
+                   (nano-calendar-closest-date))))
+      (nano-calendar-mode 1)
+      (nano-calendar-update date))
+      (fit-window-to-buffer nil nil (window-height))
+      (recenter -1)
+      (run-hooks 'nano-calendar-hook)))
