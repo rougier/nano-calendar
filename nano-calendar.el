@@ -1,10 +1,10 @@
-;;; nano-calendar.el --- Nano calendar -*- lexical-binding: t -*-
+ ;;; nano-calendar.el --- Nano calendar -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2023-2025  Nicolas P. Rougier
 
 ;; Maintainer: Nicolas P. Rougier <Nicolas.Rougier@inria.fr>
 ;; URL: https://github.com/rougier/nano-calendar
-;; Version: 0.1
+;; Version: 1.0
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: convenience
 
@@ -32,15 +32,18 @@
 ;;
 ;; (require 'nano-calendar)
 ;; (nano-calendar)
-;; (message (format-time-string "%A %d %B %Y") nano-calendar-date)
-
+;;
 
 ;; NEWS:
+;;
+;; Version 1.0
+;; - Reboot: much simpler code
 ;;
 ;; Version 0.1
 ;; - First version
 
 ;;; Code
+(require 'hl-line)
 (require 'calendar)
 (require 'holidays)
 (require 'org-agenda)
@@ -57,78 +60,11 @@
   "Layout settings"
   :group 'nano-calendar)
 
-(defface nano-calendar-header-month-face
-  `((t :inherit (bold)))
-  "Face for header month"
-  :group 'nano-calendar-faces)
+(defgroup nano-calendar-faces nil
+  "Face settings"
+  :group 'nano-calendar)
 
-(defface nano-calendar-header-weekday-face
-  '((t :inherit (nano-strong)))
-  "Face for header weekday"
-  :group 'nano-calendar-faces)
-
-(defface nano-calendar-header-weekend-face
-  '((t :inherit (font-lock-comment-face bold)))
-  "Face for header weekend"
-  :group 'nano-calendar-faces)
-
-(defface nano-calendar-weekday-face
-  '((t :inherit (default)))
-  "Face for week days"
-  :group 'nano-calendar-faces)
-
-(defface nano-calendar-weekend-face
-  '((t :inherit (font-lock-comment-face)))
-  "Face for week end"
-  :group 'nano-calendar-faces)
-
-(defface nano-calendar-holiday-face
-  '((t :inherit (nano-calendar-header-weekend-face)))
-  "Face for holidays"
-  :group 'nano-calendar-faces)
-
-(defface nano-calendar-today-face
-  `((t :foreground ,(face-background 'default)
-       :background ,(face-foreground 'default)
-       :bold t))
-  "Face for today"
-  :group 'nano-calendar-faces)
-
-(defface nano-calendar-marked-face
-  '((t :inherit (nano-default-i)))
-  "Face for marked days"
-  :group 'nano-calendar-faces)
-
-(defface nano-calendar-current-face
-  `((t :foreground ,(face-background 'link nil 'default)
-       :background ,(face-foreground 'link nil 'default)
-       :bold t))
-  "Face for current selection"
-  :group 'nano-calendar-faces)
-
-(defcustom nano-calendar-navigation-mode 'spatial
-  "Navigation system when arrows are pressed. Spatial means to move to the prev/next date on the same line while chronological means to move to the prev/next date on the same month."
-
-  :group 'nano-calendar
-  :type '(choice (const :tag "Spatial" spatial)
-                 (const :tag "Chronological" chronological)))
-
-(defcustom nano-calendar-prefix ""
-  "String for prefixing lines"
-  :type 'string
-  :group 'nano-calendar-layout)
-
-(defcustom nano-calendar-column-separation "  "
-  "String for separating columns"
-  :type 'string
-  :group 'nano-calendar-layout)
-
-(defcustom nano-calendar-row-separation ""
-  "String for separating rows"
-  :type 'string
-  :group 'nano-calendar-layout)
-
-(defcustom nano-calendar-default-layout '(3 . 4)
+(defcustom nano-calendar-layout '(3 . 4)
   "Calendar layout as (rows . columns)"
   :group 'nano-calendar-layout
   :type '(choice (const :tag "1x1" (1 . 1))
@@ -140,498 +76,160 @@
                  (const :tag "2x6" (2 . 6))
                  (const :tag "6x2" (6 . 2))))
 
-(defconst nano-calendar-buffer "*nano-calendar*"
-  "Name of the calendar buffer")
+(defcustom nano-calendar-prefix "  "
+  "String for prefixing lines"
+  :type 'string
+  :group 'nano-calendar-layout)
 
-(defvar nano-calendar--current nil
-  "Current selected date")
+(defcustom nano-calendar-colsep "  "
+  "String for separating columns"
+  :type 'string
+  :group 'nano-calendar-layout)
 
-(defvar nano-calendar--current-overlay nil
-  "Current selected date overlay")
+(defcustom nano-calendar-rowsep "\n"
+  "String for separating rows"
+  :type 'string
+  :group 'nano-calendar-layout)
 
-(defvar nano-calendar-update-hook nil
-  "Hook ran after a calendar update")
-
-(defvar nano-calendar-date-changed-hook nil
-  "Hook for when current date has changed")
-
-(defvar nano-calendar--marked nil
-  "List of marked dates")
-
-;; See https://material.io/design/color/the-color-system.html
-(defvar nano-calendar-palettes
-  (let ((palettes))
-    (dolist (item  '((red         . ("#FFEBEE" "#FFCDD2" "#EF9A9A" "#E57373" "#EF5350"
-                                     "#F44336" "#E53935" "#D32F2F" "#C62828" "#B71C1C"))
-                     (pink        . ("#FCE4EC" "#F8BBD0" "#F48FB1" "#F06292" "#EC407A"
-                                     "#E91E63" "#D81B60" "#C2185B" "#AD1457" "#880E4F"))
-                     (purple      . ("#F3E5F5" "#E1BEE7" "#CE93D8" "#BA68C8" "#AB47BC"
-                                     "#9C27B0" "#8E24AA" "#7B1FA2" "#6A1B9A" "#4A148C"))
-                     (deep-purple . ("#EDE7F6" "#D1C4E9" "#B39DDB" "#9575CD" "#7E57C2"
-                                     "#673AB7" "#5E35B1" "#512DA8" "#4527A0" "#311B92"))
-                     (indigo      . ("#E8EAF6" "#C5CAE9" "#9FA8DA" "#7986CB" "#5C6BC0"
-                                     "#3F51B5" "#3949AB" "#303F9F" "#283593" "#1A237E"))
-                     (blue        . ("#E3F2FD" "#BBDEFB" "#90CAF9" "#64B5F6" "#42A5F5"
-                                     "#2196F3" "#1E88E5" "#1976D2" "#1565C0" "#0D47A1"))
-                     (light-blue  . ("#E1F5FE" "#B3E5FC" "#81D4FA" "#4FC3F7" "#29B6F6"
-                                     "#03A9F4" "#039BE5" "#0288D1" "#0277BD" "#01579B"))
-                     (cyan        . ("#E0F7FA" "#B2EBF2" "#80DEEA" "#4DD0E1" "#26C6DA"
-                                     "#00BCD4" "#00ACC1" "#0097A7" "#00838F" "#006064"))
-                     (teal        . ("#E0F2F1" "#B2DFDB" "#80CBC4" "#4DB6AC" "#26A69A"
-                                     "#009688" "#00897B" "#00796B" "#00695C" "#004D40"))
-                     (green       . ("#E8F5E9" "#C8E6C9" "#A5D6A7" "#81C784" "#66BB6A"
-                                     "#4CAF50" "#43A047" "#388E3C" "#2E7D32" "#1B5E20"))
-                     (light-green . ("#F1F8E9" "#DCEDC8" "#C5E1A5" "#AED581" "#9CCC65"
-                                     "#8BC34A" "#7CB342" "#689F38" "#558B2F" "#33691E"))
-                     (lime        . ("#F9FBE7" "#F0F4C3" "#E6EE9C" "#DCE775" "#D4E157"
-                                     "#CDDC39" "#C0CA33" "#AFB42B" "#9E9D24" "#827717"))
-                     (yellow      . ("#FFFDE7" "#FFF9C4" "#FFF59D" "#FFF176" "#FFEE58"
-                                     "#FFEB3B" "#FDD835" "#FBC02D" "#F9A825" "#F57F17"))
-                     (amber       . ("#FFF8E1" "#FFECB3" "#FFE082" "#FFD54F" "#FFCA28"
-                                     "#FFC107" "#FFB300" "#FFA000" "#FF8F00" "#FF6F00"))
-                     (orange      . ("#FFF3E0" "#FFE0B2" "#FFCC80" "#FFB74D" "#FFA726"
-                                     "#FF9800" "#FB8C00" "#F57C00" "#EF6C00" "#E65100"))
-                     (deep-orange . ("#FBE9E7" "#FFCCBC" "#FFAB91" "#FF8A65" "#FF7043"
-                                     "#FF5722" "#F4511E" "#E64A19" "#D84315" "#BF360C"))
-                     (brown       . ("#EFEBE9" "#D7CCC8" "#BCAAA4" "#A1887F" "#8D6E63"
-                                     "#795548" "#6D4C41" "#5D4037" "#4E342E" "#3E2723"))
-                     (grey        . ("#FAFAFA" "#F5F5F5" "#EEEEEE" "#E0E0E0" "#BDBDBD"
-                                     "#9E9E9E" "#757575" "#616161" "#424242" "#212121"))
-                     (blue-grey   . ("#ECEFF1" "#CFD8DC" "#B0BEC5" "#90A4AE" "#78909C"
-                                     "#607D8B" "#546E7A" "#455A64" "#37474F" "#263238"))
-                     (viridis     . ("#fde725" "#b5de2b" "#6ece58" "#35b779" "#1f9e89"
-                                     "#26828e" "#31688e" "#3e4989" "#482878" "#440154"))
-                     (magma       . ("#fcfdbf" "#feca8d" "#fd9668" "#f1605d" "#cd4071"
-                                     "#9e2f7f" "#721f81" "#440f76" "#180f3d" "#000004"))
-                     (inferno     . ("#fcffa4" "#f7d13d" "#fb9b06" "#ed6925" "#cf4446"
-                                     "#a52c60" "#781c6d" "#4a0c6b" "#1b0c41" "#000004"))))
-      (push (cons (car item) (cdr item)) palettes)
-      (push (cons (intern (concat (symbol-name (car item)) "_r")) (reverse (cdr item)))  palettes))
-    palettes))
-
-;; Copied for s library (s-center)
-(defun nano-calendar--center (len s)
-  "If S is shorter than LEN, pad it with spaces so it is centered."
-  (declare (pure t) (side-effect-free t))
-  (let ((extra (max 0 (- len (length s)))))
-    (concat
-     (make-string (ceiling extra 2) ?\s)
-     s
-     (make-string (floor extra 2) ?\s))))
-
-(defun nano-calendar--color-luminance (color)
-  "Calculate the relative luminance of a color string (e.g. \"#ffaa00\", \"blue\").
-Return a value between 0 and 1."
-  (let* ((values (x-color-values color))
-         (red (/ (car values) 256.0))
-         (green (/ (cadr values) 256.0))
-         (blue (/ (caddr values) 256.0)))
-    (/ (+ (* .2126 red) (* .7152 green) (* .0722 blue)) 255)))
-
-(defcustom nano-calendar-palette 'deep-orange
-  (concat
-   "Background colors to use to highlight a day in calendar view according to workload.\n\n"
-   (mapconcat (lambda (name)
-                (let* ((colors (alist-get name nano-calendar-palettes))
-                       (colors (mapconcat
-                                (lambda (color)
-                                  (propertize "  " 'face `(:background ,color)))
-                                colors ""))
-                       (name_r (intern (concat (symbol-name name) "_r")))
-                       (colors_r (alist-get name_r nano-calendar-palettes))
-                       (colors_r (mapconcat
-                                  (lambda (color)
-                                    (propertize "  " 'face `(:background ,color)))
-                                  colors_r "")))
-                  (concat (format "%-14s" name) " : " colors
-                          "      "
-                          (format "%-14s" name_r) " : " colors_r)))
-              '(red pink purple deep-purple indigo blue light-blue cyan 
-                    teal green light-green lime yellow amber orange
-                    deep-orange brown grey blue-grey viridis magma inferno)
-              "\n"))
-
-  :type `(choice (const red)              (const red_r)          
-                 (const pink)             (const pink_r)         
-                 (const purple)           (const purple_r)       
-                 (const deep-purple)      (const deep-purple_r)  
-                 (const indigo)           (const indigo_r)       
-                 (const blue)             (const blue_r)         
-                 (const light-blue)       (const light-blue_r)   
-                 (const cyan)             (const cyan_r)         
-                 (const teal)             (const teal_r)         
-                 (const green)            (const green_r)        
-                 (const light-green)      (const light-green_r)  
-                 (const lime)             (const lime_r)         
-                 (const yellow)           (const yellow_r)       
-                 (const amber)            (const amber_r)        
-                 (const orange)           (const orange_r)       
-                 (const deep-orange)      (const deep-orange_r)  
-                 (const brown)            (const brown_r)        
-                 (const grey)             (const grey_r)         
-                 (const blue-grey)        (const blue-grey_r)    
-                 (const viridis)          (const viridis_r)      
-                 (const magma)            (const magma_r)        
-                 (const inferno)          (const inferno_r))     
+(defface nano-calendar-header-month-today
+  `((t :inverse-video t :inherit (bold)))
+  "Face for header month"
   :group 'nano-calendar-faces)
 
-(defcustom nano-calendar-show-busy t
-  "Whether to color days according to busy level (slow)"
+(defface nano-calendar-header-month-regular
+  `((t :inherit (bold highlight)))
+  "Face for header month"
+  :group 'nano-calendar-faces)
+
+(defface nano-calendar-header-weekday
+  '((t :underline t
+       :inherit (default)))
+  "Face for header weekday"
+  :group 'nano-calendar-faces)
+
+(defface nano-calendar-header-weekend
+  '((t :underline t
+       :inherit (font-lock-comment-face)))
+  "Face for header weekend"
+  :group 'nano-calendar-faces)
+
+(defface nano-calendar-weekday
+  '((t :inherit (default)))
+  "Face for week days"
+  :group 'nano-calendar-faces)
+
+(defface nano-calendar-weekend
+  '((t :inherit (font-lock-comment-face)))
+  "Face for week end"
+  :group 'nano-calendar-faces)
+
+(defface nano-calendar-holidays
+  '((t :inherit (font-lock-comment-face)))
+  "Face for holidays"
+  :group 'nano-calendar-faces)
+
+(defface nano-calendar-selected
+  `((t :foreground ,(face-background 'default nil 'default)
+       :background ,(face-foreground 'default nil 'default)
+       :inherit bold))
+  "Face for selected date"
+  :group 'nano-calendar-faces)
+
+(defface nano-calendar-workload-compact-free
+  `((t :inherit (widget-field)))
+  "Face for free slots on compact view."
+  :group 'nano-calendar-faces)
+
+(defface nano-calendar-workload-compact-busy
+  `((t :inverse-video t
+       :inherit (font-lock-comment-face)))
+  "Face for busy slots on compact view."
+  :group 'nano-calendar-faces)
+
+(defface nano-calendar-workload-compact-overlap
+  `((t :inverse-video t
+       :foreground "#FF8A65"))
+  "Face for overlapping slots on compact view."
+  :group 'nano-calendar-faces)
+
+(defface nano-calendar-today
+  `((t :inverse-video t
+       :inherit (link bold)))
+  "Face for today"
+  :group 'nano-calendar-faces)
+
+(defcustom nano-calendar-workload-color t
+  "Whether to show workload as background color."
   :type 'boolean
   :group 'nano-calendar)
 
-(defun nano-calendar--date-inc (date minutes hours days months years)
-  "Add MINUTES minutes, HOURS hours, DAYS day, MONTH months & YEARS
-years to DATE (default to nano-calendar--current"
-
-  (let* ((date (or date nano-calendar--current))
-         (minute (nano-calendar--date-minute date))
-         (hour (nano-calendar--date-hour date))
-         (day (nano-calendar--date-day date))
-         (month (nano-calendar--date-month date))
-         (year (nano-calendar--date-year date)))
-    (encode-time 0
-                 (+ minute minutes)
-                 (+ hour hours)
-                 (+ day days)
-                 (+ month months)
-                 (+ year years))))
-
-  
-(defun nano-calendar-current-date ()
-  "Return the current date in a list (month day year)."
-
-  (with-current-buffer nano-calendar-buffer
-    (let ((decoded (decode-time nano-calendar--current)))
-      (list (nth 4 decoded)
-            (nth 3 decoded)
-            (nth 5 decoded)))))
-
-(defun nano-calendar--datetime-to-date (datetime)
-  "Return DATE as (day month year)"
-
-  (list (nano-calendar--date-day datetime)
-        (nano-calendar--date-month datetime)
-        (nano-calendar--date-year datetime)))
-
-(defun nano-calendar--date-to-datetime (date)
-  "Convert DATE to datetime format. DATE can be expressed as (day
-month year), (month year) or (year)"
-
-  (cond ((eq (length date) 1)
-         (encode-time (list 0 0 0 1 1 (nth 0 date))))
-         ((eq (length date) 2)
-          (encode-time (list 0 0 0 1 (nth 0 date) (nth 1 date))))
-         (t
-          (encode-time (list 0 0 0
-                       (nth 0 date) (nth 1 date) (nth 2 date))))))
-
-(defun nano-calendar--date-equal (date-1 date-2)
-  "Return t if DATE-1 is equal to DATE-2 (irrespective of time)"
-
-  (and date-1 date-2
-       (eq (nano-calendar--date-day date-1)
-           (nano-calendar--date-day date-2))
-       (eq (nano-calendar--date-month date-1)
-           (nano-calendar--date-month date-2))
-       (eq (nano-calendar--date-year date-1)
-           (nano-calendar--date-year date-2))))
-
-(defun nano-calendar-today ()
-  "Return DATE for today (time set to 0)"
-  (current-time))
-
-(defun nano-calendar-yesterday ()
-  "Return DATE for yesterday (time set to 0)"
-  (nano-calendar-backward-day (current-time)))
-
-(defun nano-calendar-tomorrow ()
-  "Return DATE for testerday (time set to 0)"
-  (nano-calendar-forward-day (current-time)))
-
-(defun nano-calendar--date-second (date)
-  "Return DATE seconds (0-59)"
-  (nth 0 (decode-time date)))
-
-(defun nano-calendar--date-minute (date)
-  "Return DATE minutes (0-59)"
-  (nth 1 (decode-time date)))
-
-(defun nano-calendar--date-hour (date)
-  "Return DATE hour (0-23)"
-  (nth 2 (decode-time date)))
-
-(defun nano-calendar--date-day (date)
-  "Return DATE day of month (1-31)"
-  (nth 3 (decode-time date)))
-
-(defun nano-calendar--date-month (date)
-  "Return DATE month number (1-12)"
-  (nth 4 (decode-time date)))
-
-(defun nano-calendar--date-year (date)
-  "Return DATE year"
-  (nth 5 (decode-time date)))
-
-(defun nano-calendar-forward-day (&optional date)
-  "Move current date 1 day forward"
-  (interactive)
-  (nano-calendar--date-inc (or date nano-calendar--current) 0 0 +1 0 0))
-
-(defun nano-calendar-backward-day (&optional date)
-  "Move current date 1 day backward"
-  (interactive)
-  (nano-calendar--date-inc (or date nano-calendar--current) 0 0 -1 0 0))
-
-(defun nano-calendar-forward-week (&optional date)
-  "Move current date 1 week forward"
-  (interactive)
-  (nano-calendar--date-inc (or date nano-calendar--current) 0 0 +7 0 0))
-
-(defun nano-calendar-backward-week (&optional date)
-  "Move current date 1 week backward"
-  (interactive)
-  (nano-calendar--date-inc (or date nano-calendar--current) 0 0 -7 0 0))
-
-(defun nano-calendar-first-month (&optional date)
-  "Move current date to first month of the year (1/1/YYYY)"
-
-  (interactive)
-  (let* ((date (or date nano-calendar--current))
-         (second (nano-calendar--date-second date))
-         (minute (nano-calendar--date-minute date))
-         (hour (nano-calendar--date-hour date))
-         (day (nano-calendar--date-day date))
-         (year (nano-calendar--date-year date)))
-    (encode-time second minute hour 1 1 year)))
-
-(defun nano-calendar-last-month (&optional date)
-  "Move current date to last month of the year (1/12/YYYY)"
-
-  (interactive)
-  (let* ((date (or date nano-calendar--current))
-         (second (nano-calendar--date-second date))
-         (minute (nano-calendar--date-minute date))
-         (hour (nano-calendar--date-hour date))
-         (day (nano-calendar--date-day date))
-         (year (nano-calendar--date-year date)))
-    (encode-time second minute hour 1 12 year)))
-
-(defun nano-calendar-forward-month (&optional date)
-  "Move current date 1 month forward"
-
-  (let* ((date (or date nano-calendar--current))
-         (minute (nano-calendar--date-minute date))
-         (hour (nano-calendar--date-hour date))
-         (day (nano-calendar--date-day date))
-         (month (1+ (nano-calendar--date-month date)))
-         (year (nano-calendar--date-year date))
-         (year (if (> month 12) (1+ year) year))
-         (month (if (> month 12) 1 month))
-         (day (min day (date-days-in-month year month))))
-    (encode-time 0 minute hour day month year)))
-
-(defun nano-calendar-backward-month (&optional date)
-  "Move current date 1 month backward"
-
-  (let* ((date (or date nano-calendar--current))
-         (minute (nano-calendar--date-minute date))
-         (hour (nano-calendar--date-hour date))
-         (day (nano-calendar--date-day date))
-         (month (1- (nano-calendar--date-month date)))
-         (year (nano-calendar--date-year date))
-         (year (if (< month 1) (1- year) year))
-         (month (if (< month 1) 12 month))
-         (day (min day (date-days-in-month year month))))
-    (encode-time 0 minute hour day month year)))
-
-(defun nano-calendar-forward-year (&optional date)
-  "Move current date 1 year forward"
-  (interactive)
-  (nano-calendar--date-inc (or date nano-calendar--current) 0 0 0 0 +1))
-
-(defun nano-calendar-backward-year (&optional date)
-  "Move current date 1 year backward"
-  (interactive)
-  (nano-calendar--date-inc (or date nano-calendar--current) 0 0 0 0 -1))
-
-(defun nano-calendar-goto (date)
-  "Go to given date."
-
-  (let* ((overlay nano-calendar--current-overlay)
-         (beg (overlay-start overlay))
-         (end (overlay-end overlay))
-         (inhibit-read-only t))
-
-    ;; If the whole year is displayed, we can save some updates
-    (setq nano-calendar--current date)
-    (remove-text-properties (point-min) (point-max) '(current))
-    (nano-calendar-update)
-    (goto-char (point-min))
-    (when-let* ((match (text-property-search-forward
-                        'date date #'nano-calendar--date-equal))
-                (beg (prop-match-beginning match))
-                (end (prop-match-end match)))
-      (move-overlay overlay beg end)
-      (add-text-properties beg end '(current t))
-      (setq nano-calendar--current date)
-      (run-hooks 'nano-calendar-date-changed-hook))
-    (force-mode-line-update)
-    (fit-window-to-buffer nil nil (window-height))
-    (backward-char 3)))
-
-(defun nano-calendar-goto-today ()
-  "Move current date to today"
-
-  (interactive)
-  (nano-calendar-goto (nano-calendar-today)))
-
-(defun nano-calendar-goto-prev-day ()
-  "Go to previous day"
-
-  (interactive)
-  (nano-calendar-goto (nano-calendar-backward-day)))
-
-(defun nano-calendar-goto-next-day ()
-  "Go to next day"
-
-  (interactive)
-  (nano-calendar-goto (nano-calendar-forward-day)))
-
-(defun nano-calendar-goto-down ()
-  "Go to date below (irrespective of month)"
-
-  (interactive)
-  (goto-char (point-min))
-  (text-property-search-forward 'current t)
-  (setq goal-column (string-to-number (format-mode-line "%c")))
-  
-  (let ((date (catch 'found
-                (while (not (eobp))
-                  (next-line 1 nil)
-                  (let ((date_ (get-text-property (point) 'date)))
-                    (when date_
-                      (throw 'found date_)))))))
-    (when date
-      (nano-calendar-goto date))))
-
-(defun nano-calendar-goto-up ()
-  "Go to date above (irrespective of month)"
-
-  (interactive)
-  (goto-char (point-min))
-  (text-property-search-forward 'current t)
-  (setq goal-column (string-to-number (format-mode-line "%c")))
-  (let ((date (catch 'found
-                (while (not (eobp))
-                  (previous-line 1 nil)
-                  (let ((date_ (get-text-property (point) 'date)))
-                    (when date_
-                      (throw 'found date_)))))))
-    (when date
-      (nano-calendar-goto date))))
-
-(defun nano-calendar-goto-next ()
-  "Go to next date on the line (irrespective of month)"
-
-  (interactive)
-  (goto-char (point-min))
-  (text-property-search-forward 'current t)
-  (text-property-search-forward 'current nil)
-  (if-let* ((match (text-property-search-forward 'date))
-            (date (prop-match-value match)))
-      (nano-calendar-goto date)
-    (nano-calendar-goto-next-day)))
-
-(defun nano-calendar-goto-prev ()
-  "Go to prev date on the line  (irrespective of month)"
-
-  (interactive)
-  (goto-char (point-min))
-  (text-property-search-forward 'current t)
-  (text-property-search-backward 'current nil)
-  (if-let* ((match (text-property-search-backward 'date))
-            (date (prop-match-value match)))
-      (nano-calendar-goto date)
-    (nano-calendar-goto-prev-day)))
-
-(defun nano-calendar-goto-prev-week ()
-  "Go to previous week"
-
-  (interactive)
-  (nano-calendar-goto (nano-calendar-backward-week)))
-
-(defun nano-calendar-goto-next-week ()
-  "Go to next week"
-
-  (interactive)
-  (nano-calendar-goto (nano-calendar-forward-week)))
-
-(defun nano-calendar-goto-prev-month ()
-  "Go to previous month"
-
-  (interactive)
-  (nano-calendar-goto (nano-calendar-backward-month)))
-
-(defun nano-calendar-goto-next-month ()
-  "Go to next month"
-
-  (interactive)
-  (nano-calendar-goto (nano-calendar-forward-month)))
-
-(defun nano-calendar-goto-prev-year ()
-  "Go to previous year"
-
-  (interactive)
-  (nano-calendar-goto (nano-calendar-backward-year)))
-
-(defun nano-calendar-goto-next-year ()
-  "Go to next year"
-
-  (interactive)
-  (nano-calendar-goto (nano-calendar-forward-year)))
-
-(defun nano-calendar-palette-next ()
-  "Select next color palette and redisplay calendar"
-  (interactive)
-
-  (let ((palettes (mapcar #'car nano-calendar-palettes)))
-    (setq nano-calendar-palette
-        (or (cadr (member nano-calendar-palette palettes))
-            (car palettes))))
-  (nano-calendar-force-update-month-all)
-  (message "Switching to palette %s" nano-calendar-palette))
-
-(defun nano-calendar-mark ()
-  "Mark current date"
-
-  (interactive)
-  (nano-calendar-generate-month nil nil t)
-  (setq nano-calendar--marked
-        (if (cl-member nano-calendar--current nano-calendar--marked
-                       :test #'nano-calendar--date-equal)
-            (delete nano-calendar--current nano-calendar--marked)
-          (add-to-list 'nano-calendar--marked nano-calendar--current)))
-  ;;(nano-calendar-generate-month nil nil t)
-  (nano-calendar-force-update-month-current)
-  (nano-calendar-goto-next-day))
-
-(defun nano-calendar-unmark-all ()
-  "Unmake all marked dates"
-
-  (interactive)
-  (setq nano-calendar--marked nil)
-  (setq nano-calendar--cached-month nil)
-  (nano-calendar-update))
-
-(defvar nano-calendar--workloads nil
+(defcustom nano-calendar-workload-symbol nil
+  "Whether to show workload as symbol next to day."
+  :type 'boolean
+  :group 'nano-calendar)
+
+(defcustom nano-calendar-workload-detail nil
+  "Whether to show workload detail in echo area."
+  :type 'boolean
+  :group 'nano-calendar)
+
+(defcustom nano-calendar-workload-compact t
+  "Whether to show workload com=pact form in echo area."
+  :type 'boolean
+  :group 'nano-calendar)
+
+(defcustom nano-calendar-workload-palette
+  (let* ((black (face-foreground 'default nil 'default))
+         (white (face-background 'default nil 'default)))
+    (list (cons black white)       ;; Base entry
+                                   ;; Material deep orange shades
+          (cons black "#FBE9E7")   ;; 50
+          (cons black "#FFCCBC")   ;; 100
+          (cons black "#FFAB91")   ;; 200
+          (cons black "#FF8A65")   ;; 300
+          (cons black "#FF7043")   ;; 400
+          (cons white "#FF5722")   ;; 500
+          (cons white "#F4511E")   ;; 600
+          (cons white "#E64A19")   ;; 700
+          (cons white "#D84315")   ;; 800
+          (cons white "#BF360C"))) ;; 900  
+  "List of (FG . BG) color pairs for Nano Calendar workload highlighting.
+The first entry is a base (foreground . background) pair using the default Emacs
+colors. Subsequent entries correspond to the standard Deep Orange shades (50–900),
+with foreground chosen for readability (black on light backgrounds, white on dark)."
+  :type '(repeat (cons color color))
+  :group 'nano-calendar)
+
+(defcustom nano-calendar-workload-symbols " ¹²³⁴⁵⁶⁷⁸⁹*"
+  "String of workload symbols."
+  :type 'string
+  :group 'nano-calendar)
+          
+(defconst nano-calendar-buffer "*nano-calendar*"
+  "Name of the buffer used for the calendar.")
+
+(defvar nano-calendar--workload-cache nil
   "Cached list of (date workload) for internal use")
 
-(defun nano-calendar--workloads-process (timestamp)
-  "This process TIMESTAMP (as generated by org-element-parse-buffer) in
-order to add 1 to all days within the start and end date of the
-timestamp of it is active."
+(defun nano-calendar--workload-get (date)
+  "Search workload for DATE in cached workload."
+    (or (alist-get date nano-calendar--workload-cache nil nil #'equal) 0))
 
+(defun nano-calendar--workload-update-all ()
+  "Computes the number of active timestamps per day, based on
+all org agenda files."
+  (setq nano-calendar--workload-cache nil)
+  (message "Updating workload")
+  (dolist (file (org-agenda-files))
+    (with-current-buffer (find-file-noselect file)
+      (org-with-wide-buffer
+       (org-element-map (org-element-parse-buffer) 'timestamp
+         #'nano-calendar--workload-parse)))))
+
+(defun nano-calendar--workload-parse (timestamp)
+  "This computes workload for the given TIMESTAMP (as generated
+ by org-element-parse-buffer) in order to add 1 to all days within the
+start and end date of the timestamp of it is active."
   (when (memq (org-element-property :type timestamp) '(active active-range))
     (let* ((start-date
             (encode-time (list 0 0 0
@@ -650,35 +248,177 @@ timestamp of it is active."
                     dates)))
       (dolist (date dates)
         (let* ((date (decode-time date))
-               (date (list (nth 5 date) (nth 4 date) (nth 3 date))))
-          (setf (alist-get date nano-calendar--workloads nil nil #'equal)
-                (1+ (or (alist-get date nano-calendar--workloads nil nil #'equal) 0))))))))
+               (date (list (nth 4 date) (nth 3 date) (nth 5 date))))
+          (setf (alist-get date nano-calendar--workload-cache nil nil #'equal)
+                (1+ (or (alist-get date nano-calendar--workload-cache
+                                   nil nil #'equal) 0))))))))
 
-(defun nano-calendar--workloads-update ()
-  "Computes the number of active timestamps per day, based on
-all org agenda files."
+(defun nano-calendar--workload-slots (date)
+  "Compute 30-minute workload density slots for a given DATE from org agenda entries.
 
-  (setq nano-calendar--workloads nil)
-  (dolist (file (org-agenda-files))
-    (with-current-buffer (find-file-noselect file)
-      (org-with-wide-buffer
-       (org-element-map (org-element-parse-buffer) 'timestamp
-         #'nano-calendar--workloads-process)))))
+This function scans all files in `org-agenda-files` and collects all agenda
+entries for the specified DATE. It extracts the `dotime` timestamp property
+from each entry and computes how many agenda items overlap each 30-minute slot.
 
-(defun nano-calendar-workloads-update ()
-  "Computes the number of active timestamps per day, based on
-all org agenda files and redisplay calendar."
+Return value:
+A list of 48 integers, each corresponding to a 30-minute interval in the day:
+- Index 0  → 00:00–00:30
+- Index 1  → 00:30–01:00
+- …
+- Index 47 → 23:30–24:00
 
+Each element is:
+- 0 if the slot is free
+- N (>=1) if N agenda items overlap this slot
+
+Time parsing details:
+- Start time is extracted using `org-parse-time-string` from the `dotime` property.
+- End time is extracted from ranges like \"12:00-14:00\" in the timestamp string.
+- If no explicit end time exists, the event is assumed to last 30 minutes.
+- Partial-hour appointments are handled correctly.
+- Any slot touched by an appointment increments that slot by 1.
+
+NOTE:
+- Appointments spanning outside the current day are not handled specially
+  (assumed to stay within DATE)."
+  (let ((files (org-agenda-files))
+        (slots (make-list 48 0)))
+    (dolist (file files)
+      (dolist (entry (org-agenda-get-day-entries file date))
+        (when-let* ((dt (get-text-property 0 'dotime entry))
+                    (is-string (stringp dt)))
+          (let* ((ts (substring-no-properties dt))
+                 
+                 ;; Parse start time
+                 (start-parsed (org-parse-time-string ts))
+                 (h-start (nth 2 start-parsed))
+                 (m-start (nth 1 start-parsed))
+                 
+                 ;; Parse end time if present
+                 (has-end (string-match "-\\([0-9]+\\):\\([0-9]+\\)" ts))
+                 (h-end (if has-end
+                            (string-to-number (match-string 1 ts))
+                          h-start))
+                 (m-end (if has-end
+                            (string-to-number (match-string 2 ts))
+                          (+ m-start 30))))
+
+            ;; Normalize end minutes
+            (when (>= m-end 60)
+              (setq h-end (1+ h-end)
+                    m-end (- m-end 60)))
+
+            (let* ((start-min (+ (* h-start 60) m-start))
+                   (end-min   (+ (* h-end 60) m-end))
+                   (slot-start (/ start-min 30))
+                   (slot-end   (/ end-min 30)))
+
+              ;; Increment covered slots
+              (dotimes (i 48)
+                (when (and (>= i slot-start) (< i slot-end))
+                  (setf (nth i slots)
+                        (1+ (nth i slots))))))))))
+    slots))
+
+(defun nano-calendar-workload-compact (date &optional start-hour end-hour)
+  "Return a compact representation of workload as 30-min half-hour blocks
+per hour for DATE, between START-HOUR and END-HOUR.
+
+Slot values come from `nano-calendar--workload-slots`:
+- 0   → free
+- 1   → busy
+- >1  → overlapping events."
+  
+  (let* ((timestamp (encode-time 0 0 0 (nth 1 date) (nth 0 date) (nth 2 date)))
+         (date-str (format-time-string "%A %d %B %Y" timestamp))
+         (slots (nano-calendar--workload-slots date))
+         (start (or start-hour 8))
+         (end   (or end-hour  18))
+         (free    (propertize " " 'face 'nano-calendar-workload-compact-free))
+         (busy    (propertize " " 'face 'nano-calendar-workload-compact-busy))
+         (overlap (propertize " " 'face 'nano-calendar-workload-compact-overlap))
+         (hours (mapcar (lambda (h) (format "%02d" h))
+                        (number-sequence start end)))
+         ;; extract the slots for the selected hours
+         (hour-slots (cl-subseq slots (* 2 start) (* 2 (1+ end))))
+         ;; group every 2 slots into 1 hour block with half-hour precision
+         (blocks
+          (cl-loop for i from 0 below (length hour-slots) by 2
+                   for first  = (nth i hour-slots)
+                   for second = (nth (1+ i) hour-slots)
+                   for left =
+                   (cond
+                    ((= first 0) free)
+                    ((= first 1) busy)
+                    (t overlap))
+                   for right =
+                   (cond
+                    ((= second 0) free)
+                    ((= second 1) busy)
+                    (t overlap))
+                   collect (concat left right)))
+         (line1 (concat
+                 (propertize (format "%26s  " date-str) 'face 'bold)
+                 (propertize (mapconcat #'identity hours " ")
+                             'face 'font-lock-comment-face)))
+         (line2 (concat
+                 (propertize (format "%28s" "Free / Busy  ")
+                             'face 'font-lock-comment-face)
+                 (mapconcat #'identity blocks " ")))
+         (space (make-string (- (window-width)
+                                (length line1)
+                                (- left-margin-width)
+                                (- right-margin-width)
+                                1)
+                             ?\s)))
+    (concat space line1 "\n" space line2)))
+
+(defun nano-calendar-workload-update-all ()
+  "Update all workloads"
   (interactive)
-  (nano-calendar--workloads-update)
-  (nano-calendar-force-update-month-all))
+  (nano-calendar--workload-update-all)
+  (nano-calendar))
 
-(defun nano-calendar--workload (date)
-  "Return the workload for the given DATE."
+(defun nano-calendar-workload-face (workload face)
+  "Return the corresponding face for WORKLOAD given current FACE."
+  (let* ((black (face-foreground face nil 'default))
+         (white (face-background face nil 'default))
+         (palette nano-calendar-workload-palette)
+         (workload (min workload (length palette))))
+    `( :foreground ,(car (nth workload palette))
+       :background ,(cdr (nth workload palette)))))
 
-  (or (alist-get date nano-calendar--workloads nil nil #'equal) 0))
+(defun nano-calendar-workload-symbol (workload)
+  "Return the corresponding symbol for WORKLOAD."
 
-(defun nano-calendar--org-agenda-entries (&optional date)
+  (if nano-calendar-workload-symbol
+      (let* ((symbols nano-calendar-workload-symbols)
+             (workload (min workload (1- (length symbols)))))
+        (substring symbols workload (1+ workload)))
+    " "))
+
+(defun nano-calendar--generate-day (day date is-today is-holidays is-weekend)
+  "Internal function to generate a day number"
+  (let* ((face (cond (is-today     'nano-calendar-today)
+                     (is-holidays  'nano-calendar-holidays)
+                     (is-weekend   'nano-calendar-weekend)
+                     (t            'nano-calendar-weekday)))
+         (workload (nano-calendar--workload-get date))
+         (symbol (nano-calendar-workload-symbol workload))
+         (face (cond (is-today 'nano-calendar-today)
+                     ((eq workload 0) face)
+                     (nano-calendar-workload-color
+                      (nano-calendar-workload-face workload face))
+                     (t face))))
+    (propertize (format "%2d%s" day symbol)
+                'date date
+                'workload workload
+                'is-today is-today
+                'is-holidays is-holidays
+                'is-weekend is-weekend
+                'face face)))
+
+(defun nano-calendar--collect--agenda-entries (date)
   "Retrieve org agenda entries for the given DATE."
 
   (let ((entries))
@@ -689,512 +429,411 @@ all org agenda files and redisplay calendar."
                (tags (mapconcat #'identity tags ","))
                (extra (string-trim (get-text-property 0 'extra entry)))
                (text (string-trim (get-text-property 0 'txt entry)))
-               (text (replace-regexp-in-string (concat org-tsr-regexp " ") "" text))               
+               (text (replace-regexp-in-string (concat org-tsr-regexp " ") "" text))     
                (time (get-text-property 0 'time entry)))
           (unless (member "CANCELLED" (string-split tags ","))
             (push (concat
                  (propertize " " 'display display)
                    (concat
                     (unless (string-empty-p extra)
-                      (concat (propertize extra 'face 'default) " "))
+                      (concat (propertize extra
+                                          'face 'default) " "))
                     (unless (or (string-empty-p time) (not (string-empty-p extra)))
-                      (concat (propertize time 'face 'bold) " - "))
+                      (concat (propertize time
+                                          'face 'bold) " - "))
                     (unless (string-empty-p text)
-                      (concat (propertize (substring-no-properties text) 'face 'nano-default) " "))
+                      (concat (propertize (substring-no-properties text)
+                                          'face 'nano-default) " "))
                     (unless (string-empty-p tags)
                       (propertize tags 'face 'org-tag))))
           entries)))))
   (sort entries)))
 
-(defun nano-calendar-insert-agenda (&optional date)
-  "Insert org agenda for given DATE. Depending on the calendar layout,
-agenda will be displayed on the right or below the calendar."
+(defun nano-calendar--generate-month (year month)
+  "Generate the string representation of YEAR MONTH."
 
-  (let* ((date (or date nano-calendar--current (current-time)))
-         (str-date (format-time-string "%A, %d %B %Y" date))
-         (alignment (if (eq (cdr nano-calendar-layout) 1)
-                        (propertize " " 'display '(space :align-to (+ left 26)))
-                      ""))
-         (separator (make-string (length str-date) ? ))
-         (next-line-add-newlines t)
-         (org-date (decode-time date))
-         (org-date (list (nth 4 org-date) (nth 3 org-date) (nth 5 org-date)))
-         (holidays (calendar-check-holidays org-date)))
-    (if (eq (cdr nano-calendar-layout) 1)
-        (goto-char (point-min))
-      (goto-char (point-max)))
-    (forward-line)
-    (end-of-line)
-    (insert (concat alignment (propertize str-date 'face 'nano-salient-s)))
-    (next-line 1) (end-of-line)
-    ;; (insert (concat alignment (propertize separator 'face 'nano-salient)))
-    (when holidays 
-        (insert(concat alignment (propertize (car holidays) 'face 'nano-faded))))
-    (next-line 1) (end-of-line)
-    (let ((point (point)))
-      (dolist (entry (nano-calendar--org-agenda-entries org-date)) 
-        (insert (concat alignment (format "%s" entry)))
-        (next-line) (end-of-line))
-      (goto-char point))))
-
-(defvar nano-calendar--cached-month nil
-  "Cached month for faster rendering")
-
-(defun nano-calendar-generate-month (month year &optional force)
-  "Return the (possibility cached) representation of MONTH YEAR."
-
-  (let* ((month (or month (nano-calendar--date-month
-                           nano-calendar--current)))
-         (year (or year (nano-calendar--date-year
-                           nano-calendar--current)))
-         (key (cons month year))
-         (keys (mapcar 'car nano-calendar--cached-month)))
-    (cond ((not (member key keys))
-           (add-to-list 'nano-calendar--cached-month
-                        (cons key (nano-calendar--generate-month month year force))))
-          (force
-           (setcdr (assoc key nano-calendar--cached-month #'equal)
-                   (nano-calendar--generate-month month year force))))
-    (cdr (assoc key nano-calendar--cached-month #'equal))))
-
-(defun nano-calendar--generate-month (month year &optional force)
-  "Generate the representation of MONTH YEAR."
   (let* ((first (calendar-day-of-week (list month 1 year)))
          (first (+ (mod (+ (- first 1) 7) 7) 1)) ;; Week starts on Monday
          (last  (+ first (calendar-last-day-of-month month year)))
-         (today (nano-calendar-today))
-         (days ""))
-    (dotimes (row 6)
-      (dotimes (col 7)
+         (today (decode-time (current-time)))
+         (is-today-month (and (= year (nth 5 today))
+                              (= month (nth 4 today))))
+         (face-today                'nano-calendar-today)
+         (face-selected             'nano-calendar-selected)
+         (face-holidays             'nano-calendar-holidays)
+         (face-weekend              'nano-calendar-weekend)
+         (face-weekday              'nano-calendar-weekday)
+         (face-header-weekday       'nano-calendar-header-weekday)
+         (face-header-weekend       'nano-calendar-header-weekend)
+         (face-header-month-regular 'nano-calendar-header-month-regular) 
+         (face-header-month-today   'nano-calendar-header-month-today)
+         (face-header-month (if is-today-month
+                                face-header-month-today
+                              face-header-month-regular))
+         (month-name (format "%s %d" (calendar-month-name month) year))
+         ;; 20 = 7x3 -1 : This allow to privilege slightly left centering
+         (month-padding (- 20 (length month-name)))
+         (month-name (concat
+                      (make-string (/ month-padding 2) ? )
+                      month-name
+                      (make-string (- month-padding (/ month-padding 2)) ? )))
+         (month-name (concat (propertize month-name
+                                         'font-lock-face face-header-month
+                                         'face           face-header-month)
+                             ;; The terminal space does not get the face
+                             ;; for aesthetic reason. If there is a background
+                             ;; for face, it will be aligned with last day number.
+                             " "))
+         (day-names (concat (propertize "Mo Tu We Th Fr "
+                                        'font-lock-face face-header-weekday
+                                        'face           face-header-weekday)
+                            (propertize "Sa Su"
+                                        'font-lock-face face-header-weekend
+                                        'face           face-header-weekend)
+                             ;; The terminal space does not get the face
+                             ;; for aesthetic reason. If there is a background
+                             ;; for face, it will be aligned with month name
+                            " "))
+         (output (concat month-name "\n"
+                         day-names "\n")))
+    (dotimes (row 6) ;; 6 rows at most (any month, any year)
+      (dotimes (col 7) ;; 7 columns for week iteration
         (let* ((index (+ 1 col (* row 7)))
                (day (- index first -1))
-               (date (encode-time 0 0 0 day month year))
-               (is-holidays (calendar-check-holidays (list month day year)))
-               (is-today (nano-calendar--date-equal date today))
-               (level (nano-calendar--workload (list year month day)))
-               (backgrounds (alist-get nano-calendar-palette nano-calendar-palettes))
-               (level (min (length backgrounds) level))
-               (background (nth (- level 1) backgrounds))
-               (foreground (if (< (nano-calendar--color-luminance background) 0.55)
-                               "white" "black"))
-               (is-marked (cl-member date nano-calendar--marked
-                                     :test #'nano-calendar--date-equal))
-               (is-current (nano-calendar--date-equal date nano-calendar--current))
-               (char-width (frame-char-width))
-               (face (cond (is-marked
-                            '(:inherit nano-calendar-marked-face))
-                           ((> level 0)
-                            `( :foreground ,foreground
-                               :background ,background
-                               :inherit ,(when is-today 'nano-calendar-today-face)))
-                           (is-today
-                            '(:inherit nano-calendar-today-face))
-                           (is-holidays
-                            '(:inherit nano-calendar-holiday-face))
-                           ((eq col 5)
-                            '(:inherit nano-calendar-weekend-face))
-                           ((eq col 6)
-                            '(:inherit nano-calendar-weekend-face))
-                           (t
-                            '(:inherit nano-calendar-weekday-face))))
-               (day-string (if (< day 10)
-                               (format " %d " day)
-                             (if (display-graphic-p)
-                                 (concat (propertize " " 'display `(space :width (,(/ char-width 2))))
-                                         (format "%2d" day)
-                                         (propertize " " 'display `(space :width (,(- char-width (/ char-width 2))))))
-                               (format "%2d " day))))
-               )
-          (if (or (< index first) (>= index last))
-              (setq days (concat days "   "))
-            (setq days (concat days
-                   (propertize day-string
-                               'date date
-                               'current is-current
-                               'face face))))))
+               (date (list month day year))
+               (is-holidays (calendar-check-holidays date))
+               (is-today (and (= (nth 2 date) (nth 5 today))
+                              (= (nth 0 date) (nth 4 today))
+                              (= (nth 1 date) (nth 3 today))))
+               (is-selected nil)
+               (is-saturday (eq col 5))
+               (is-sunday (eq col 6))
+               (is-weekend (or is-saturday is-sunday))
+               (face (cond (is-today     face-today)
+                           (is-holidays  face-holidays)
+                           (is-weekend   face-weekend)
+                           (t            face-weekday))))
+          (setq output
+                (concat output 
+                        (if (or (< index first) (>= index last))
+                            "   "
+                          (nano-calendar--generate-day day
+                                                       date
+                                                       is-today
+                                                       is-holidays
+                                                       is-weekend))))))
       (when (< row 5)
-        (setq days (concat days "\n"))))
-    (concat
-     (propertize
-      (nano-calendar--center 20 (format "%s %d" (calendar-month-name month) year))
-      'face 'nano-calendar-header-month-face)
-     " \n"
-     (propertize
-      (mapconcat #'(lambda (day)
-                     (if (display-graphic-p)
-                         (let ((cw (frame-char-width)))
-                           (concat (propertize " " 'display `(space :width (,(/ cw 2))))
-                                   (substring (calendar-day-name day t t) 0 2)
-                                   (propertize " " 'display `(space :width (,(- cw (/ cw 2)))))))
-                       (substring (calendar-day-name day t t) 0 2)))
-                 '(1 2 3 4 5) (if (display-graphic-p) "" " "))
-      'face 'nano-calendar-header-weekday-face)
-     (unless (display-graphic-p) " ")
-     (propertize
-      (mapconcat #'(lambda (day)
-                     (if (display-graphic-p)
-                         (let ((cw (frame-char-width)))
-                           (concat (propertize " " 'display `(space :width (,(/ cw 2))))
-                                   (substring (calendar-day-name day t t) 0 2)
-                                   (propertize " " 'display `(space :width (,(- cw (/ cw 2)))))))
-                       (substring (calendar-day-name day t t) 0 2)))
-                 '(6 0) (if (display-graphic-p) "" " "))
-      'face 'nano-calendar-header-weekend-face)
-     (if (display-graphic-p) "\n" " \n")
-     days)))
-
-
-(defun nano-calendar-force-update-month-current ()
-  "Force update of current month"
-
-  (interactive)
-  (let ((year (nano-calendar--date-year nano-calendar--current))
-        (month (nano-calendar--date-month nano-calendar--current)))
-    (nano-calendar-generate-month month year t))
-  (nano-calendar-update)
-  (nano-calendar-goto nano-calendar--current))
-
-(defun nano-calendar-force-update-month-all ()
-  "Force update of all months"
-
-  (interactive)
-  (let ((year (nano-calendar--date-year nano-calendar--current)))
-    (dolist (month (number-sequence 1 12))
-      (nano-calendar-generate-month month year t)))
-  (nano-calendar-update)
-  (nano-calendar-goto nano-calendar--current))
-
-(defun nano-calendar--is-bold (row col grid)
-  "Return where cell at (ROW,COL) is bold in GRID.
-GRID must be a string (newlines separated) where each line describes
-cells with 0 (normal) and 1 (bold). The number of columns and rows is
-deduced from the GRID string.
-
-Example: \"000\n010\n000\" for a 3x3 grid with a bold cell in the center.
-"
+        (setq output (concat output "\n"))))
+    output))
   
-  (let* ((lines (split-string grid))
-         (rows (length lines))
-         (cols (length (car lines)))
-         (row (1- row))
-         (col (1- col)))
-    (if (and (>= col 0) (< col cols) (>= row 0) (< row rows))
-        (substring (nth row lines) col (1+ col))
-      "0")))
+(defun nano-calendar--concat-months (months prefix separator)
+  "Concatenate MONTHS, prefixes with PREFIX and separated by SEPARATOR."
+  (let* ((lists (mapcar (lambda (month) (split-string month "\n")) months))
+         (lines (apply #'cl-mapcar
+                       (lambda (&rest parts)
+                         (concat prefix (mapconcat #'identity parts separator)))
+                       lists)))
+    (mapconcat #'identity lines "\n")))
 
-(defun nano-calendar--col-separator (row col grid)
-  "This returns the left border for the given (ROW,COL) in GRID.
-COL must be between 0 (left border) and the total number of cols (right
-border) according to the provided GRID. ROW must be between 0 (top
-border) and the total number of rows (bottom border) according to the
-provided GRID.  GRID must be a string (newlines separated) where each
-line describes cells with 0 (normal) and 1 (bold). The number of columns
-and rows is deduced from the GRID string.
+(defun nano-calendar--generate (&optional date layout)
+  "Generate a calendar showing DATE and using specified LAYOUT."
+  (let* ((layout (or layout nano-calendar-layout))
+         (nrows (car layout))
+         (ncols (cdr layout))
+         (prefix nano-calendar-prefix)
+         (colsep nano-calendar-colsep)
+         (rowsep nano-calendar-rowsep)         
+         (today (nano-calendar-today))
+         (date-c (or date today))
+         (date-1 (list 1 1 (nth 2 date-c)))
+         (date-p (nano-calendar-date-add date-c '(0 -1 0)))
+         ;; Based on layout, we compute the first month to be displayed
+         ;; such as to generate the whole sequence of months.
+         (start (cond ((equal layout '(1 . 1)) date-c)
+                      ((equal layout '(1 . 2)) date-c)
+                      ((equal layout '(1 . 3)) date-p)
+                      ((equal layout '(3 . 1)) date-p)
+                      ((equal layout '(2 . 6)) date-1)
+                      ((equal layout '(6 . 2)) date-1)
+                      ((equal layout '(3 . 4)) date-1)
+                      ((equal layout '(4 . 3)) date-1)
+                      (t                       date-1)))
+         (month (nth 0 start))
+         (year  (nth 2 start))
+         (months (let (result)
+                   (dotimes (i (* nrows ncols) (nreverse result))
+                     (push (nano-calendar--generate-month (+ year (/ (+ month i -1) 12))
+                                                          (+ 1 (mod (+ month i -1) 12)))
+                           result))))
+         (chunks (seq-partition months ncols)))
+    (mapconcat
+     (lambda (batch)
+       (nano-calendar--concat-months batch prefix colsep))
+     chunks
+     (concat "\n" rowsep))))
 
-Example: \"000\n010\n000\" for a 3x3 grid with a bold cell in the center.
-"
-  (let ((bold-left (equal (nano-calendar--is-bold row col grid) "1"))
-        (bold-right (or (equal (nano-calendar--is-bold row col grid) "1")
-                        (equal (nano-calendar--is-bold row (1+ col) grid) "1")))
-        (bold ))
-    (if (or bold-left bold-right)
-        "┃ "
-      "│ ")))
+(defun nano-calendar-date-add (date delta)
+  "Return a new DATE (month day year) adjusted by DELTA (day mont year).
 
-(defun nano-calendar--col-separator (row col grid)
-  "This returns the left border for the given (ROW,COL) in GRID.
-COL must be between 0 (left border) and the total number of cols (right
-border) according to the provided GRID. ROW must be between 0 (top
-border) and the total number of rows (bottom border) according to the
-provided GRID.  GRID must be a string (newlines separated) where each
-line describes cells with 0 (normal) and 1 (bold). The number of columns
-and rows is deduced from the GRID string.
+DATE must be a list of the form (MONTH DAY YEAR).
+DAY and YEAR are integer offsets in days and years.
+WEEK is an integer offset in weeks (each week = 7 days).
+MONTH is an integer offset in months.  All units may be negative.
 
-Example: \"000\n010\n000\" for a 3x3 grid with a bold cell in the center.
-"
-  (cond ((eq col 1) "")
-        (t " ")))
-
-(defun nano-calendar--row-separator (row grid)
-  "This returns the string for the given ROW in GRID.
-ROW must be between 0 (top border) and the total number of rows (bottom
-border) according to the provided GRID. GRID must be a string (newlines
-separated) where each line describes cells with 0 (normal) and
-1 (bold). The number of columns and rows is deduced from the GRID
-string.
-
-Example: \"000\n010\n000\" for a 3x3 grid with a bold cell in the center.
-"
-
-  (let* ((rows (length (split-string grid)))
-         (cols (length (car (split-string grid))))
-         (vlines 
-          '(("00" . "│") ("0." . "│") (".0" . "│") ("01" . "┃")
-            ("10" . "┃") ("1." . "┃") (".1" . "┃") ("11" . "┃")))          
-         (hlines 
-          '(("00" . "─") ("0." . "─") (".0" . "─") ("01" . "━")
-            ("10" . "━") ("1." . "━") (".1" . "━") ("11" . "━")))           
-         (intersections
-          '(;; Corners
-            ("1..." . "┛") ("0..." . "┘") (".1.." . "┗") (".0.." . "└")
-            ("..1." . "┓") ("..0." . "┐") ("...1" . "┏") ("...0" . "┌")
-            ;; Borders
-            ("..11" . "┳") ("..00" . "┬") ("..01" . "┲") ("..10" . "┱")
-            ("11.." . "┻") ("00.." . "┴") ("01.." . "┺") ("10.." . "┹")
-            (".1.1" . "┣") (".0.0" . "├") (".1.0" . "┡") (".0.1" . "┢")
-            ("1.1." . "┫") ("0.0." . "┤") ("1.0." . "┩") ("0.1." . "┪")
-            ;; Intersections
-            ("0000" . "┼") ("0001" . "╆") ("0010" . "╅") ("0011" . "╈")
-            ("0100" . "╄") ("0101" . "╊") ("0110" . "╋") ("0111" . "╋")
-            ("1000" . "╃") ("1001" . "╋") ("1010" . "╉") ("1011" . "╋")
-            ("1100" . "╇") ("1101" . "╋") ("1110" . "╋") ("1111" . "╋"))))
-         
-
-    (let ((separator ""))
-      (dolist (col (number-sequence 0 cols))
-        (let* ((a (nano-calendar--is-bold row col grid))
-               (b (nano-calendar--is-bold row (1+ col) grid))
-               (c (nano-calendar--is-bold (1+ row) col grid))
-               (d (nano-calendar--is-bold (1+ row) (1+ col) grid))
-               (A (if (or (= col 0) (= row 0)) "." a))
-               (B (if (or (= (1+ col) (1+ cols)) (= row 0)) "." b))
-               (C (if (or (= col 0) (= (1+ row) (1+ rows))) "." c))
-               (D (if (or (= (1+ col) (1+ cols)) (= (1+ row) (1+ rows))) "." d))               
-               (ABCD (concat A B C D))
-               (inter (alist-get ABCD intersections nil nil #'equal))               
-               (BD (concat B D))
-               (hline (alist-get BD hlines nil nil #'equal)))
-          (setq separator (concat separator inter))
-          (when hline
-            (setq separator (concat separator (make-string 22 (aref hline 0)))))))
-      (concat separator "\n"))))
-
-(defun nano-calendar--row-separator (row grid)
-  "This returns the string for the given ROW in GRID.
-ROW must be between 0 (top border) and the total number of rows (bottom
-border) according to the provided GRID. GRID must be a string (newlines
-separated) where each line describes cells with 0 (normal) and
-1 (bold). The number of columns and rows is deduced from the GRID
-string.
-
-Example: \"000\n010\n000\" for a 3x3 grid with a bold cell in the center.
-"
-  (let ((rows (length (string-split grid)))
-        (cols (length (car (string-split grid)))))
-    (if (eq row rows)
-        ""
-      "\n")))
-
-(defun nano-calendar-update (&optional layout do-not-erase)
-  "Insert calendar with given LAYOUT in current buffer that is first
- erased unless DO-NOT-ERASE is t."
-
-  (interactive)
-
-  (unless do-not-erase
-    (let ((inhibit-read-only t))
-      (erase-buffer)
-      (goto-char (point-min))))
+This function uses `encode-time' to normalize overflow, so adding
+months or days that exceed the calendar bounds (e.g. from January 31
+to \"the next month\") will produce the correct normalized date."
   
-  (let* ((curr nano-calendar--current)
-         (prev (nano-calendar-backward-month nano-calendar--current))
-         (first (nano-calendar-first-month nano-calendar--current))
-         (layout (or layout nano-calendar-layout))
-         (date (cond ((equal layout '(1 . 1)) curr)
-                     ((equal layout '(1 . 2)) curr)
-                     ((equal layout '(1 . 3)) prev)
-                     ((equal layout '(3 . 1)) prev)
-                     ((equal layout '(2 . 6)) first)
-                     ((equal layout '(6 . 2)) first)
-                     ((equal layout '(3 . 4)) first)
-                     ((equal layout '(4 . 3)) first)))
-         (grid (let ((date date)
-                     (grid ""))
-                 (dolist (row (number-sequence 1 (car layout)))
-                   (dolist (col (number-sequence 1 (cdr layout)))
-                     (if (eq (nano-calendar--date-month date)
-                             (nano-calendar--date-month (nano-calendar-today)))
-                         (setq grid (concat grid "1"))
-                       (setq grid (concat grid "0")))
-                     (setq date (nano-calendar-forward-month date)))
-                    (setq grid (concat grid "\n")))
-                 grid))
-         (inhibit-read-only t))
+  (calendar-gregorian-from-absolute
+   (time-to-days
+    (encode-time
+     0 0 0
+     (+ (nth 1 date) (nth 0 delta)) 
+     (+ (nth 0 date) (nth 1 delta))
+     (+ (nth 2 date) (nth 2 delta))))))
 
-    (insert (nano-calendar--row-separator 0 grid))
-    (dolist (row (number-sequence 1 (car layout)))
-      (dolist (col (number-sequence 1 (cdr layout)))
-        (let* ((month (nano-calendar--date-month date))
-               (year (nano-calendar--date-year date))
-               (bold-left (equal (nano-calendar--is-bold row col grid) "1"))
-               (bold-right (or (equal (nano-calendar--is-bold row col grid) "1")
-                               (equal (nano-calendar--is-bold row (1+ col) grid) "1")))
-               (bold (or bold-left bold-right))
-               (lines (string-split (nano-calendar-generate-month month year) "\n")))
-          (save-excursion
-            (dolist (line lines)
-              (cond ((eq col 1)
-                     (insert (concat
-                              (nano-calendar--col-separator row col grid)
-                              line
-                              (nano-calendar--col-separator row (1+ col) grid)
-                              "\n")))
-                    ((eq col (cdr layout))
-                     (end-of-line)
-                     (insert (concat line
-                                     (nano-calendar--col-separator row col grid)
-                                     ))
-                     (forward-line))
-                    (t
-                     (end-of-line)                     
-                     (insert (concat line
-                                     (nano-calendar--col-separator row col grid)))
-                     (forward-line))))))
-        (setq date (nano-calendar-forward-month date)))
-      (goto-char (point-max))
-      (insert (nano-calendar--row-separator row grid)))
-    (remove-text-properties (point-min) (point-max) '(current))
-    ;; (goto-char (point-min))
-    (fit-window-to-buffer nil nil (window-height))
-    (run-hooks 'nano-calendar-update-hook)))
+(defun nano-calendar-today ()
+  "Return today date."
+  (interactive)
+  (let ((date (decode-time (current-time))))
+    (list (nth 4 date) (nth 3 date) (nth 5 date))))
 
-(defun nano-calendar-select-and-quit ()
-  "Select date and quit calendar"
+(defun nano-calendar-is-date-visible (date)
+  "Return whether DATE is currently visible."
+
+  (when-let ((buffer (get-buffer nano-calendar-buffer)))
+    (with-current-buffer buffer
+      (save-excursion
+        (goto-char (point-min))
+        (text-property-search-forward 'date date t)))))
+
+(defun nano-calendar-goto-date (date &optional redisplay)
+  "Move point to the first character in the buffer whose 'date property
+equals DATE (month day year).  If the date is not currently visible 
+and REDISPLAY is t, the calendar is re-generated such as to make the date
+ visible.  Else, return t if found, nil otherwise."
+
+  (cond ((nano-calendar-is-date-visible date)
+         (goto-char (point-min))
+         (when-let ((match (text-property-search-forward 'date date t)))
+           (goto-char (prop-match-beginning match))
+           (force-mode-line-update)
+           (when nano-calendar-workload-compact
+             (nano-calendar-show-workload-compact))
+           (when nano-calendar-workload-detail
+             (nano-calendar-show-org-agenda-entries))
+           t))
+  
+        (redisplay
+         (nano-calendar date)
+         (when nano-calendar-workload-compact
+           (nano-calendar-show-workload-compact))
+         (when nano-calendar-workload-detail
+           (nano-calendar-show-org-agenda-entries))
+         t)
+  
+        (t
+         nil)))
+
+(defun nano-calendar-goto-relative-date (delta &optional redisplay)
+  "Move point to date under cursor adjusted by DELTA (day month year).
+
+If the date is not currently displayed and REDISPLAY is t, the calendar
+is redisplayed such as to make the date visible.  When there is no date
+under cursor, move to the closest date (this may following user
+non-navigation moves."
+  (let ((cursor-date (nano-calendar-cursor-date))
+        (closest-date (nano-calendar-closest-date)))
+    (cond (cursor-date
+           (nano-calendar-goto-date 
+            (nano-calendar-date-add cursor-date delta) redisplay))
+          (closest-date
+           (nano-calendar-goto-date closest-date redisplay))
+          (t (message "No date under cursor")))))
+
+(defun nano-calendar-cursor-date ()
+  "Move cursor to today."
+  (interactive)
+  (get-text-property (point) 'date))
+
+(defun nano-calendar-cursor-workload ()
+  "Return workload for date under cursor."
+  (interactive)
+  (get-text-property (point) 'workload))
+
+(defun nano-calendar-closest-date ()
+  "Get point for closest date from cursor. Backward search first."
+  (interactive)
+  (let ((curr (get-text-property (point) 'date))
+        (prev (save-excursion
+                (text-property-search-backward 'date)
+                (get-text-property (point) 'date)))
+        (next (save-excursion
+                (text-property-search-forward 'date)
+                (backward-char)
+                (get-text-property (point) 'date))))
+    (or curr prev next)))
+
+(defun nano-calendar--hl-line-range ()
+  "Return the start and end of the region that has the same `date` property
+at point."
+  (save-match-data
+    (save-excursion
+      (if-let* ((date (get-text-property (point) 'date))
+                (match (text-property-search-forward 'date date t))
+                (beg (prop-match-beginning match))
+                (end (prop-match-end match)))
+          (cons beg end)
+      (cons (point-min) (point-min))))))
+
+(defun nano-calendar-goto-today ()
+  "Move cursor to today."
+  (interactive)
+  (nano-calendar-goto-date (nano-calendar-today) t))
+
+;; Macro to declare multiple nano-calendar navigation commands at once.
+;; Each SPEC is of the form:
+;;   (FUNCTION-NAME "Docstring" DAY WEEK MONTH YEAR)
+;; The macro expands each SPEC into:
+;;   (defun FUNCTION-NAME ()
+;;     "Docstring"
+;;     (interactive)
+;;     (nano-calendar-goto-relative-date DELTA)
+(defmacro nano-calendar-define-moves (&rest specs)
+  "Macro to declare multiple nano-calendar navigation commands at once."
+  `(progn
+     ,@(mapcar
+        (lambda (spec)
+          (let ((name (nth 0 spec))
+                (doc  (nth 1 spec))
+                (args (nthcdr 2 spec))) ; (DAY MONTH YEAR)
+            `(defun ,name ()
+               ,doc
+               (interactive)
+               (nano-calendar-goto-relative-date ,@args t))))
+        specs)))
+
+(nano-calendar-define-moves
+  ;; Day navigation
+  (nano-calendar-goto-prev-day  "Move cursor to previous day."  '(-1 0 0))
+  (nano-calendar-goto-next-day  "Move cursor to next day."      '(+1 0 0))
+  ;; Week navigation
+  (nano-calendar-goto-prev-week "Move cursor to previous week."  '(-7 0 0))
+  (nano-calendar-goto-next-week "Move cursor to next week."      '(+7 0 0))
+  ;; Month navigation
+  (nano-calendar-goto-prev-month "Move cursor to previous month." '(0 -1 0))
+  (nano-calendar-goto-next-month "Move cursor to next month."     '(0 +1 0))
+  ;; Year navigation
+  (nano-calendar-goto-prev-year  "Move cursor to previous year."  '(0 0 -1))
+  (nano-calendar-goto-next-year  "Move cursor to next year."      '(0 0 +1)))
+
+(defun nano-calendar-quit ()
+  "Burry calendar buffer."
+  (interactive)
+  (bury-buffer))
+
+(defun nano-calendar-workload-menu ()
+  "Toggle one of the mode flags via single key: [c]olor [s]ymbol [d]etails."
+  (interactive)
+  (let ((key (read-key (concat "Workload display:"
+                               "   [b] background color"
+                               "   [s] symbol"
+                               "   [d] detail"
+                               "   [c] compact"
+                               )))
+        (message-log-max nil))
+    (pcase key
+      (?b (setq nano-calendar-workload-color
+                (not nano-calendar-workload-color))
+          (nano-calendar))
+      (?s (setq nano-calendar-workload-symbol
+                (not nano-calendar-workload-symbol))
+          (nano-calendar))
+      (?c (setq nano-calendar-workload-compact
+                (not nano-calendar-workload-compact))
+          (nano-calendar))
+      (?d (setq nano-calendar-workload-detail
+                (not nano-calendar-workload-detail))
+          (nano-calendar))
+      (_ ))))
+
+(defun nano-calendar-show-org-agenda-entries ()
+  "Show agenda entries  in echo area for current date."
+  (interactive)
+  (when-let* ((date (nano-calendar-cursor-date))
+              (entries (nano-calendar--collect--agenda-entries date)))
+    (let ((message-log-max nil))
+      (message "%s" (mapconcat #'identity entries "\n")))))
+
+(defun nano-calendar-show-workload-compact ()
+  "Show compact workload in echo area for current date."
+  
+  (interactive)
+  (when-let* ((date (nano-calendar-cursor-date)))
+    (let ((message-log-max nil))
+      (message (nano-calendar-workload-compact date)))))
+
+(defun nano-calendar-goto-org-agenda ()
+  "Got to org agenda for current DATE."
 
   (interactive)
-  (if-let* ((window (active-minibuffer-window))
-            (buffer (window-buffer window)))
-      (exit-minibuffer)
-    (kill-buffer)))
-
-(defun nano-calendar-cancel-and-quit ()
-  "Cancel selecton and quit calendar"
-
-  (interactive)
-  (setq nano-calendar--current nano-calendar--saved)
-
-  (if-let* ((window (active-minibuffer-window))
-            (buffer (window-buffer window)))
-      (exit-minibuffer)
-    (kill-buffer)))
+  (when-let* ((date (nano-calendar-cursor-date))
+              (year (nth 2 date))
+              (month (nth 0 date))
+              (day (nth 1 date))
+              (date (format "%04d-%02d-%02d" year month day)))
+    (nano-calendar-quit)
+    (let ((org-agenda-start-day date))
+      (org-agenda nil "n"))))
 
 (define-minor-mode nano-calendar-mode
   "Nano calendar mode"
-
-  :keymap  `((,(kbd "<left>")    . nano-calendar-goto-prev)
-             (,(kbd "<right>")   . nano-calendar-goto-next)
-             (,(kbd "p")         . nano-calendar-goto-prev-day)
-             (,(kbd "n")         . nano-calendar-goto-next-day)
-             (,(kbd "P")         . nano-calendar-goto-prev-week)
-             (,(kbd "N")         . nano-calendar-goto-next-week)
-             (,(kbd "<up>")      . nano-calendar-goto-up)
-             (,(kbd "<down>")    . nano-calendar-goto-down)
-             (,(kbd "=")         . nano-calendar-palette-next)
+  :keymap  `((,(kbd "<left>")    . nano-calendar-goto-prev-day)
+             (,(kbd "<right>")   . nano-calendar-goto-next-day)
+             (,(kbd "<up>")      . nano-calendar-goto-prev-week)
+             (,(kbd "<down>")    . nano-calendar-goto-next-week)
              (,(kbd "<S-left>")  . nano-calendar-goto-prev-month)
              (,(kbd "<S-right>") . nano-calendar-goto-next-month)
              (,(kbd "<S-down>")  . nano-calendar-goto-next-year)
              (,(kbd "<S-up>")    . nano-calendar-goto-prev-year)
+             (,(kbd "v")         . nano-calendar-show-org-agenda-entries)
+             (,(kbd "<RET>")     . nano-calendar-goto-org-agenda)
+             (,(kbd "<SPC>")     . nano-calendar-show-org-agenda-entries)
+             (,(kbd "w")         . nano-calendar-workload-menu)
              (,(kbd ".")         . nano-calendar-goto-today)
-             (,(kbd "r")         . nano-calendar-workloads-update)
-             (,(kbd "SPC")       . nano-calendar-mark)
-             (,(kbd "U")         . nano-calendar-unmark-all)
-             (,(kbd "M-x")       . execute-extended-command)
-             (,(kbd "<RET>")     . nano-calendar-select-and-quit)
-             (,(kbd "<ESC>")     . nano-calendar-cancel-and-quit)
-             (,(kbd "C-g")       . nano-calendar-cancel-and-quit)
-             (,(kbd "j")         . nano-calendar-cancel-and-quit)
-             (,(kbd "q")         . nano-calendar-cancel-and-quit))
-
+             (,(kbd "r")         . nano-calendar-workload-update-all)
+             (,(kbd "q")         . nano-calendar-quit))
   (when nano-calendar-mode
-    (setq cursor-type nil
-          truncate-lines t
-          buffer-read-only t)))
+    (setq-local hl-line-range-function #'nano-calendar--hl-line-range)
+    (face-remap-set-base 'hl-line 'nano-calendar-selected)
+    (hl-line-mode 1)
+    (setq buffer-read-only t)))
 
-(defun nano-calendar (&optional date layout buffer)
-  "Display a calendar centered on DATE using specified LAYOUT and BUFFER."
-
+(defun nano-calendar (&optional date layout)
+  "Display a Gregorian calendar showing DATE and enforcing LAYOUT."
   (interactive)
-  (let ((buffer (or buffer (pop-to-buffer nano-calendar-buffer)))
-        (layout (or layout nano-calendar-default-layout)))
-    (switch-to-buffer buffer)
-    (setq-local nano-calendar-layout layout))
+  (let* ((buffer (get-buffer nano-calendar-buffer))
+         (date (cond (date date)
+                     ((buffer-live-p buffer)
+                      (with-current-buffer buffer
+                        (nano-calendar-closest-date)))
+                     (t (nano-calendar-today))))
+         (layout (or layout nano-calendar-layout)))
+    (let ((buffer (get-buffer-create nano-calendar-buffer)))
+      (unless (get-buffer-window buffer)
+        (pop-to-buffer buffer))
+      (with-current-buffer buffer
+        (let ((inhibit-read-only t))
+          (erase-buffer)
+          (insert (concat "\n" (nano-calendar--generate date layout) "\n")))
+        (fit-window-to-buffer nil nil (window-height))
 
-  (setq nano-calendar--marked '())
-  (setq nano-calendar--cached-month nil)
-  (unless nano-calendar--workloads
-    (nano-calendar--workloads-update))
-  (unless nano-calendar--current
-    (setq nano-calendar--current (nano-calendar-today)))
-  (setq nano-calendar--saved nano-calendar--current)
-
-  (let ((overlay (make-overlay (point-min) (point-min))))
-    (setq nano-calendar--current-overlay overlay)
-    (overlay-put overlay'face 'nano-calendar-current-face))
-  (when date
-    (setq nano-calendar--current date))
-
-  (unless nano-calendar--workloads
-    (nano-calendar--workloads-update))
-  (nano-calendar-update)
-  (nano-calendar-goto nano-calendar--current)
-  (nano-calendar-mode 1)
-
-  ;; Enforce spatial or chronological navigation
-  (let ((keymap nano-calendar-mode-map))
-    (if (eq nano-calendar-navigation-mode 'spatial)
-        (progn
-          (define-key keymap (kbd "<left>")  #'nano-calendar-goto-prev)
-          (define-key keymap (kbd "<right>")  #'nano-calendar-goto-next))
-      (progn
-          (define-key keymap (kbd "<left>")  #'nano-calendar-goto-prev-day)
-          (define-key keymap (kbd "<right>")  #'nano-calendar-goto-next-day))))
-
-  (let ((inhibit-message t))
-    (hl-line-mode 0))
-
-  (run-hooks 'nano-calendar-hook))
-
-(defun nano-calendar--minibuffer-setup ()
-  (let* ((window (active-minibuffer-window))
-         (buffer (window-buffer window)))
-    (with-current-buffer buffer
-      (nano-calendar nil '(1 . 3) buffer)
-      (setq-local resize-mini-windows 'grow-only
-                  max-mini-window-height 1.0))))
-
-(defun nano-calendar--minibuffer-date-changed ()
-  (let* ((window (active-minibuffer-window))
-         (buffer (window-buffer window)))
-    (with-current-buffer buffer
-      (let* ((inhibit-read-only t)
-             (date nano-calendar--current)
-             (date (concat (format-time-string "%A " date)
-                           (string-trim (format-time-string "%e %B %Y" date)))))
-        (goto-char (point-min))
-        (insert (concat (propertize "Select a date: " 'face 'bold)
-                        (propertize date 'face 'default)
-                        (propertize "\n" 'display '(raise -0.5))))
-      (goto-char (point-min))))))
-
-(defun nano-calendar-prompt ()
-  "Prompt for a date based on calendar selection"
-
-  (interactive)
-  (add-hook 'minibuffer-setup-hook #'nano-calendar--minibuffer-setup)
-  (add-hook 'nano-calendar-date-changed-hook #'nano-calendar--minibuffer-date-changed)
-  (setq nano-calendar--saved nano-calendar--current)
-  (unwind-protect
-      (let ((nano-calendar-navigation-mode 'chronological)
-            (vertico-count 13))
-        (read-from-minibuffer ""))
-    (remove-hook 'minibuffer-setup-hook #'nano-calendar--minibuffer-setup)
-    (remove-hook 'nano-calendar-date-changed-hook #'nano-calendar--minibuffer-date-changed))
-  nano-calendar--current)
-
-(defun nano-calendar-current ()
-  "Current selected date"
-
-  nano-calendar--current)
-
-(provide 'nano-calendar)
-;;; nano-calendar.el ends here
+        ;; Enter calendar mode if not already in calendar mode
+        (unless nano-calendar-mode
+          (nano-calendar-mode 1)
+          ;; Upate all workloads (when visible)
+          (when (or nano-calendar-workload-color
+                    nano-calendar-workload-symbol)
+            (nano-calendar--workload-update-all))
+          (run-hooks 'nano-calendar-hook))        
+        (nano-calendar-goto-date date)))))

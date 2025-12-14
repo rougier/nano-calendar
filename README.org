@@ -1,8 +1,7 @@
 
-* Nano calendar
+* NANO calendar
 
 This library offers an alternative to calendar. It's very similar and offer only a few options, like the possibility to color day according to the number of item in the org-agenda.
-
 
 ** Usage example
 
@@ -11,22 +10,10 @@ Using a regular buffer:
 #+begin_src emacs-lisp
 (require 'nano-calendar)
 (nano-calendar)
-(message (format-time-string "%A %d %B %Y") (nano-calendar-current))
 #+end_src
 
-Using minibuffer:
-
-#+begin_src emacs-lisp
-(require 'nano-calendar)
-(let ((date (nano-calendar-prompt)))
-  (message (format-time-string "%A %d %B %Y") date))
-#+end_src
 
 ** Screenshots
 
 #+ATTR_ORG: :width 400
 [[./nano-calendar.png]]
-
-#+ATTR_ORG: :width 400
-[[./nano-calendar-prompt.png]]
-
