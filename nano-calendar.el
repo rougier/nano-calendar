@@ -1,4 +1,4 @@
- ;;; nano-calendar.el --- Nano calendar -*- lexical-binding: t -*-
+;;; nano-calendar.el --- Nano calendar -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2023-2025  Nicolas P. Rougier
 
