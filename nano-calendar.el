@@ -183,8 +183,8 @@
   :type 'boolean
   :group 'nano-calendar)
 
-(defcustom nano-calendar-workload-space nil
-  "Whether to show workload on the right or left"
+(defcustom nano-calendar-workload-alignment nil
+  "Whether to align worload left or right. Default is right"
   :type 'boolean
   :group 'nano-calendar)
 
@@ -381,7 +381,7 @@ Slot values come from `nano-calendar--workload-slots`:
                                 (- right-margin-width)
                                 1)
                              ?\s)))
-    (if nano-calendar-workload-space
+    (if nano-calendar-workload-alignment
 	(concat space line1 "\n" space line2)
       (concat line1 "\n" line2))))
 
