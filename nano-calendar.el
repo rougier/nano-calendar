@@ -179,7 +179,12 @@
   :group 'nano-calendar)
 
 (defcustom nano-calendar-workload-compact t
-  "Whether to show workload com=pact form in echo area."
+  "Whether to show workload compact form in echo area."
+  :type 'boolean
+  :group 'nano-calendar)
+
+(defcustom nano-calendar-workload-alignment nil
+  "Whether to align worload left or right. Default is right"
   :type 'boolean
   :group 'nano-calendar)
 
@@ -376,7 +381,9 @@ Slot values come from `nano-calendar--workload-slots`:
                                 (- right-margin-width)
                                 1)
                              ?\s)))
-    (concat space line1 "\n" space line2)))
+    (if nano-calendar-workload-alignment
+	(concat space line1 "\n" space line2)
+      (concat line1 "\n" line2))))
 
 (defun nano-calendar-workload-update-all ()
   "Update all workloads"
