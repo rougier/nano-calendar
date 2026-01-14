@@ -183,16 +183,17 @@
   :type 'boolean
   :group 'nano-calendar)
 
-(defcustom nano-calendar-workload-alignment nil
+(defcustom nano-calendar-workload-alignment 'right
   "Whether to align worload left or right. Default is right"
-  :type 'boolean
+  :type '(choice (const :tag "Left" left)
+		 (const :tag "Right" right))
   :group 'nano-calendar)
 
 (defcustom nano-calendar-workload-palette
   (let* ((black (face-foreground 'default nil 'default))
          (white (face-background 'default nil 'default)))
     (list (cons black white)       ;; Base entry
-                                   ;; Material deep orange shades
+          ;; Material deep orange shades
           (cons black "#FBE9E7")   ;; 50
           (cons black "#FFCCBC")   ;; 100
           (cons black "#FFAB91")   ;; 200
@@ -381,7 +382,7 @@ Slot values come from `nano-calendar--workload-slots`:
                                 (- right-margin-width)
                                 1)
                              ?\s)))
-    (if nano-calendar-workload-alignment
+    (if (eq nano-calendar-workload-alignment 'right)
 	(concat space line1 "\n" space line2)
       (concat line1 "\n" line2))))
 
