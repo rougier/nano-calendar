@@ -841,6 +841,9 @@ at point."
   "Display a Gregorian calendar showing DATE and enforcing LAYOUT."
   (interactive)
 
+  (if (and (buffer-live-p (get-buffer nano-calendar-buffer))
+           (get-buffer-window nano-calendar-buffer))
+      (delete-window (get-buffer-window nano-calendar-buffer))
   (if (buffer-live-p (get-buffer nano-calendar-buffer))
       (pop-to-buffer
        (get-buffer-create nano-calendar-buffer))
@@ -853,7 +856,7 @@ at point."
         (nano-calendar-update date)
         (fit-window-to-buffer nil nil (window-height))
         (recenter -1)
-        (run-hooks 'nano-calendar-hook)))))
+        (run-hooks 'nano-calendar-hook))))))
 
 (provide 'nano-calendar)
 ;;; nano-calendar.el ends here
